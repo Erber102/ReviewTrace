@@ -6,12 +6,17 @@ File format (one entry per line, # = comment):
   DOI:10.1234/xxx         # DOI
   10.1234/xxx             # bare DOI (must contain '/')
 
-Fetches metadata from Semantic Scholar and inserts papers into DB,
-tagged with retrieval_reason = 'seed'.
+Attempts to fetch full metadata from Semantic Scholar. If a lookup fails
+(no API key, rate limit, 404, network error), a minimal stub record is
+inserted instead so the seed ID is still tracked and can anchor citation
+expansion.
 """
+
+from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -24,44 +29,92 @@ from reviewtrace.retrieval.normalizer import from_semantic_scholar
 _S2_BASE = "https://api.semanticscholar.org/graph/v1"
 _FIELDS = "title,authors,year,externalIds,venue,abstract,citationCount,referenceCount,url"
 
+ProgressCb = Callable[[str], None]
 
-def load_seeds(seeds_file: Path) -> list[str]:
-    """Load seed paper IDs from file. Returns list of internal paper IDs."""
+
+def load_seeds(
+    seeds_file: Path,
+    progress_cb: ProgressCb | None = None,
+) -> list[str]:
+    """Load seed paper IDs from file. Returns list of internal paper IDs.
+
+    For each identifier that cannot be resolved via Semantic Scholar, a
+    minimal stub record is inserted so the seed is retained and can be
+    used as a citation-expansion anchor.
+    """
+    def _log(msg: str) -> None:
+        print(f"[seed_loader] {msg}")
+        if progress_cb:
+            progress_cb(msg)
+
     if not seeds_file.exists():
-        print(f"[seed_loader] Seeds file not found: {seeds_file}")
+        _log(f"Seeds file not found: {seeds_file}")
         return []
 
-    ids = []
+    raw_ids: list[str] = []
     for line in seeds_file.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        ids.append(line)
+        raw_ids.append(line)
 
-    if not ids:
+    if not raw_ids:
+        _log("Seeds file is empty — skipping")
         return []
 
-    print(f"[seed_loader] Loading {len(ids)} seed papers…")
-    papers = asyncio.run(_fetch_seeds(ids))
+    _log(f"{len(raw_ids)} seed identifier(s) provided")
 
-    seed_ids = []
-    for paper in papers:
+    from reviewtrace.config.settings import SEMANTIC_SCHOLAR_API_KEY
+    if not SEMANTIC_SCHOLAR_API_KEY:
+        _log(
+            "No SEMANTIC_SCHOLAR_API_KEY configured — "
+            "S2 metadata lookup may be rate-limited or unavailable"
+        )
+
+    resolved, failed = asyncio.run(_fetch_seeds(raw_ids))
+
+    seed_ids: list[str] = []
+
+    for paper in resolved:
         db.insert_paper(paper.to_db_dict())
         run_id = _record_seed_run(paper)
         _record_seed_retrieval(paper, run_id)
         seed_ids.append(paper.id)
 
-    print(f"[seed_loader] {len(seed_ids)} seed papers loaded.")
+    if resolved:
+        _log(f"{len(resolved)} seed metadata record(s) resolved")
+
+    if failed:
+        _log(
+            f"{len(resolved)} of {len(raw_ids)} metadata records resolved — "
+            f"{len(failed)} unresolved"
+        )
+        stubs = [_make_stub(raw) for raw in failed]
+        for stub in stubs:
+            db.insert_paper(stub.to_db_dict())
+            run_id = _record_seed_run(stub)
+            _record_seed_retrieval(stub, run_id)
+            seed_ids.append(stub.id)
+        _log(f"{len(stubs)} unresolved seed stub(s) retained")
+    elif not resolved:
+        _log("0 seed metadata records resolved")
+        _log("Continuing without resolved seed metadata")
+
     return seed_ids
 
 
-async def _fetch_seeds(raw_ids: list[str]) -> list[PaperMetadata]:
-    headers = {}
+async def _fetch_seeds(
+    raw_ids: list[str],
+) -> tuple[list[PaperMetadata], list[str]]:
+    """Fetch metadata from S2. Returns (resolved, failed_raw_ids)."""
+    headers: dict[str, str] = {}
     from reviewtrace.config.settings import SEMANTIC_SCHOLAR_API_KEY
     if SEMANTIC_SCHOLAR_API_KEY:
         headers["x-api-key"] = SEMANTIC_SCHOLAR_API_KEY
 
-    papers = []
+    resolved: list[PaperMetadata] = []
+    failed: list[str] = []
+
     async with httpx.AsyncClient(timeout=30, headers=headers) as client:
         for raw in raw_ids:
             s2_id = _to_s2_id(raw)
@@ -71,14 +124,48 @@ async def _fetch_seeds(raw_ids: list[str]) -> list[PaperMetadata]:
                     params={"fields": _FIELDS},
                 )
                 if resp.status_code == 404:
-                    print(f"[seed_loader] Not found: {raw}")
+                    print(f"[seed_loader] Not found on S2: {raw} — will insert stub")
+                    failed.append(raw)
+                    continue
+                if resp.status_code == 429:
+                    print(f"[seed_loader] Rate limited fetching {raw} — will insert stub")
+                    failed.append(raw)
                     continue
                 resp.raise_for_status()
                 paper = from_semantic_scholar(resp.json())
-                papers.append(paper)
+                resolved.append(paper)
             except Exception as e:
-                print(f"[seed_loader] Error fetching {raw}: {e}")
-    return papers
+                print(f"[seed_loader] Error fetching {raw}: {e} — will insert stub")
+                failed.append(raw)
+
+    return resolved, failed
+
+
+def _make_stub(raw: str) -> PaperMetadata:
+    """Create a minimal PaperMetadata stub for an unresolved seed identifier."""
+    arxiv_id: str | None = None
+    doi: str | None = None
+
+    normalized = raw.strip()
+    if normalized.lower().startswith("arxiv:"):
+        arxiv_id = normalized[6:]
+    elif normalized.lower().startswith("doi:"):
+        doi = normalized[4:]
+    elif normalized.startswith("10.") or "/" in normalized:
+        doi = normalized
+    else:
+        # Bare arXiv ID: digits, dots, hyphens only
+        if "/" not in normalized:
+            arxiv_id = normalized
+
+    return PaperMetadata(
+        title=f"[Seed] {raw}",
+        authors=[],
+        arxiv_id=arxiv_id,
+        doi=doi,
+        source_type="unknown",
+        url=f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id else None,
+    )
 
 
 def _to_s2_id(raw: str) -> str:

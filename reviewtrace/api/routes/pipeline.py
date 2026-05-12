@@ -159,15 +159,16 @@ def _run_pipeline(job_id: str, req: RunRequest) -> None:  # noqa: C901
         # 2. Seed papers
         seed_ids: list[str] = []
         if req.seeds.strip():
-            _emit(job_id, "seeds", "Loading seed papers…")
             import tempfile
 
             with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
                 f.write(req.seeds)
                 tmp = f.name
-            seed_ids = load_seeds(Path(tmp))
+            seed_ids = load_seeds(
+                Path(tmp),
+                progress_cb=lambda msg: _emit(job_id, "seeds", msg),
+            )
             Path(tmp).unlink(missing_ok=True)
-            _emit(job_id, "seeds", f"✓ {len(seed_ids)} seed papers loaded")
         else:
             _emit(job_id, "seeds", "No seeds provided — skipping")
 

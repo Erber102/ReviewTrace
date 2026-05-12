@@ -77,8 +77,7 @@ def run(
     seed_ids: list[str] = []
     if seeds:
         typer.echo("[2/7] Loading seed papers…")
-        seed_ids = load_seeds(seeds)
-        typer.echo(f"      {len(seed_ids)} seed papers loaded")
+        seed_ids = load_seeds(seeds, progress_cb=lambda msg: typer.echo(f"      {msg}"))
     else:
         typer.echo("[2/7] No seeds file — skipping seed load")
 
