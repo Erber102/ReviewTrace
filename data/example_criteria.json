@@ -1,0 +1,15 @@
+{
+  "topic": "Sparse Autoencoders for Mechanistic Interpretability",
+  "inclusion": [
+    "Proposes or evaluates sparse autoencoders (SAEs) or dictionary learning for neural network analysis",
+    "Studies mechanistic interpretability, feature extraction, or circuit analysis in language models or neural networks",
+    "Empirically analyzes internal representations or activations of transformer models",
+    "Introduces evaluation methods or benchmarks for interpretability techniques"
+  ],
+  "exclusion": [
+    "Does not involve neural network interpretability or internal representation analysis",
+    "Applies LLMs only as a tool for unrelated tasks (e.g., translation, summarization, code generation) without studying internals",
+    "Pure survey or meta-analysis with no new methods or empirical results",
+    "Focuses exclusively on hardware efficiency, training speed, or deployment without interpretability goals"
+  ]
+}

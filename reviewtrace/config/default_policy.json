@@ -1,0 +1,5 @@
+{
+  "allow":  ["peer_reviewed", "preprint"],
+  "flag":   ["workshop", "unknown"],
+  "block":  ["blog", "grey_literature"]
+}

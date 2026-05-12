@@ -1,0 +1,22 @@
+name: lint
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install uv
+        run: pip install uv
+      - name: Install dependencies
+        run: uv pip install -e ".[dev]" --system
+      - name: ruff
+        run: ruff check reviewtrace tests
+      - name: mypy
+        run: mypy reviewtrace
+      - name: pytest
+        run: pytest

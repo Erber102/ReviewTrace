@@ -1,0 +1,18 @@
+# Seed papers for: Sparse Autoencoders for Mechanistic Interpretability
+# Format: arXiv ID, DOI, or bare arXiv number (one per line)
+# These are used as starting points for citation graph expansion.
+
+# Anthropic — Towards Monosemanticity
+arXiv:2309.05144
+
+# EleutherAI — Sparse Autoencoders Find Highly Interpretable Features
+arXiv:2309.08600
+
+# Anthropic — Scaling and Evaluating Sparse Autoencoders
+arXiv:2406.04093
+
+# DeepMind — Scaling Monosemanticity
+arXiv:2406.04093
+
+# Lieberum et al. — Gemma Scope
+arXiv:2408.05147

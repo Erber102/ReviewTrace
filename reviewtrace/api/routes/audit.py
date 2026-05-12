@@ -1,0 +1,108 @@
+"""Audit, stats, taxonomy, evidence endpoints."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+from reviewtrace.api.schemas import (
+    EvidenceLinkOut,
+    RunOut,
+    StatsOut,
+    TaxonomyNodeOut,
+)
+from reviewtrace.audit.logger import get_all_runs
+from reviewtrace.db import connection as db
+
+router = APIRouter()
+
+
+@router.get("/stats", response_model=StatsOut)
+async def get_stats() -> StatsOut:
+    total = db.fetchone("SELECT COUNT(*) AS n FROM papers")["n"]
+    dup_count = db.fetchone("SELECT COUNT(*) AS n FROM dedup_decisions")["n"]
+
+    counts = {
+        r["decision"]: r["n"]
+        for r in db.fetchall(
+            "SELECT decision, COUNT(*) AS n FROM screening_decisions GROUP BY decision"
+        )
+    }
+    screened_ids = {
+        r["paper_id"] for r in db.fetchall("SELECT paper_id FROM screening_decisions")
+    }
+    duplicate_ids = {
+        r["paper_id_removed"] for r in db.fetchall("SELECT paper_id_removed FROM dedup_decisions")
+    }
+    all_ids = {r["id"] for r in db.fetchall("SELECT id FROM papers")}
+    canonical_ids = all_ids - duplicate_ids
+    unscreened = len(canonical_ids - screened_ids)
+
+    return StatsOut(
+        total_papers=total,
+        canonical_papers=len(canonical_ids),
+        duplicates=dup_count,
+        included=counts.get("include", 0),
+        excluded=counts.get("exclude", 0),
+        uncertain=counts.get("uncertain", 0),
+        unscreened=unscreened,
+        total_runs=db.fetchone("SELECT COUNT(*) AS n FROM retrieval_runs")["n"],
+        total_evidence=db.fetchone("SELECT COUNT(*) AS n FROM evidence_items")["n"],
+        taxonomy_nodes=db.fetchone("SELECT COUNT(*) AS n FROM taxonomy_nodes")["n"],
+    )
+
+
+@router.get("/runs", response_model=list[RunOut])
+async def list_runs() -> list[RunOut]:
+    return [RunOut(**r) for r in get_all_runs()]
+
+
+@router.get("/taxonomy", response_model=list[TaxonomyNodeOut])
+async def list_taxonomy() -> list[TaxonomyNodeOut]:
+    nodes = db.fetchall("SELECT * FROM taxonomy_nodes ORDER BY label")
+    out = []
+    for node in nodes:
+        # papers linked via taxonomy_evidence
+        paper_ids = [
+            r["paper_id"]
+            for r in db.fetchall(
+                "SELECT DISTINCT paper_id FROM taxonomy_evidence WHERE taxonomy_node_id = ?",
+                (node["id"],),
+            )
+        ]
+        # evidence items
+        ev_rows = db.fetchall(
+            """
+            SELECT te.evidence_item_id AS evidence_id,
+                   te.paper_id,
+                   te.relevance_score,
+                   ei.content,
+                   ei.evidence_type
+            FROM taxonomy_evidence te
+            LEFT JOIN evidence_items ei ON ei.id = te.evidence_item_id
+            WHERE te.taxonomy_node_id = ?
+            ORDER BY te.relevance_score DESC
+            LIMIT 20
+            """,
+            (node["id"],),
+        )
+        out.append(
+            TaxonomyNodeOut(
+                id=node["id"],
+                label=node.get("label"),
+                description=node.get("description"),
+                cluster_id=node.get("cluster_id"),
+                paper_ids=paper_ids,
+                evidence_links=[EvidenceLinkOut(**e) for e in ev_rows],
+            )
+        )
+    return out
+
+
+@router.get("/evidence")
+async def list_evidence(paper_id: str | None = None) -> list[dict]:
+    if paper_id:
+        return db.fetchall(
+            "SELECT * FROM evidence_items WHERE paper_id = ? ORDER BY evidence_type",
+            (paper_id,),
+        )
+    return db.fetchall("SELECT * FROM evidence_items ORDER BY paper_id, evidence_type")
