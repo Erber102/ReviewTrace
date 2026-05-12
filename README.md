@@ -1,6 +1,12 @@
 # ReviewTrace
 
-**Auditable academic literature review pipeline** — every paper's full retrieval provenance is tracked from query to inclusion decision.
+ReviewTrace is an open-source infrastructure project for auditable literature review.
+
+It helps researchers trace claims in a literature review back to supporting evidence, flag weak or overbroad citations, and generate reproducible review logs.
+
+Instead of asking “Can AI write my related work?”, ReviewTrace asks:
+
+“Can every claim in this review be traced, checked, and audited?”
 
 ## Features
 
