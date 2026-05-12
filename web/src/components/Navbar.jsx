@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
@@ -12,9 +12,21 @@ const links = [
 
 export default function Navbar() {
   const [stats, setStats] = useState(null);
+  const location = useLocation();
 
-  useEffect(() => {
+  function fetchStats() {
     api.stats().then(setStats).catch(() => {});
+  }
+
+  // Refetch on every navigation
+  useEffect(() => {
+    fetchStats();
+  }, [location.pathname]);
+
+  // Refetch when pipeline signals completion
+  useEffect(() => {
+    window.addEventListener('stats:refresh', fetchStats);
+    return () => window.removeEventListener('stats:refresh', fetchStats);
   }, []);
 
   return (

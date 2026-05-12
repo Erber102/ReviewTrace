@@ -79,7 +79,11 @@ export default function RunPage() {
       api.streamJob(
         job_id,
         (event) => setLogs((prev) => [...prev, event]),
-        () => { setRunning(false); setDone(true); }
+        () => {
+          setRunning(false);
+          setDone(true);
+          window.dispatchEvent(new CustomEvent('stats:refresh'));
+        }
       );
     } catch (err) {
       setLogs([{ type: 'error', message: err.message }]);
