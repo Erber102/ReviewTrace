@@ -53,7 +53,10 @@ def _complete_anthropic(prompt: str, max_tokens: int) -> str:
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
-    return message.content[0].text
+    for block in message.content:
+        if block.type == "text":
+            return block.text
+    return ""
 
 
 def _complete_openai(prompt: str, max_tokens: int) -> str:

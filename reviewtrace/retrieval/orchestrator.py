@@ -31,7 +31,7 @@ async def run_queries(queries: list[SearchQuery]) -> list[PaperMetadata]:
     seen_ids: set[str] = set()
     all_papers: list[PaperMetadata] = []
     for r in results:
-        if isinstance(r, Exception):
+        if isinstance(r, BaseException):
             print(f"[orchestrator] Query failed: {r}")
             continue
         for paper in r:

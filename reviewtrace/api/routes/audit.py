@@ -16,10 +16,15 @@ from reviewtrace.db import connection as db
 router = APIRouter()
 
 
+def _count(sql: str) -> int:
+    row = db.fetchone(sql)
+    return int(row["n"]) if row else 0
+
+
 @router.get("/stats", response_model=StatsOut)
 async def get_stats() -> StatsOut:
-    total = db.fetchone("SELECT COUNT(*) AS n FROM papers")["n"]
-    dup_count = db.fetchone("SELECT COUNT(*) AS n FROM dedup_decisions")["n"]
+    total = _count("SELECT COUNT(*) AS n FROM papers")
+    dup_count = _count("SELECT COUNT(*) AS n FROM dedup_decisions")
 
     counts = {
         r["decision"]: r["n"]
@@ -45,9 +50,9 @@ async def get_stats() -> StatsOut:
         excluded=counts.get("exclude", 0),
         uncertain=counts.get("uncertain", 0),
         unscreened=unscreened,
-        total_runs=db.fetchone("SELECT COUNT(*) AS n FROM retrieval_runs")["n"],
-        total_evidence=db.fetchone("SELECT COUNT(*) AS n FROM evidence_items")["n"],
-        taxonomy_nodes=db.fetchone("SELECT COUNT(*) AS n FROM taxonomy_nodes")["n"],
+        total_runs=_count("SELECT COUNT(*) AS n FROM retrieval_runs"),
+        total_evidence=_count("SELECT COUNT(*) AS n FROM evidence_items"),
+        taxonomy_nodes=_count("SELECT COUNT(*) AS n FROM taxonomy_nodes"),
     )
 
 
