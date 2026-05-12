@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 from reviewtrace.audit import logger as audit
 from reviewtrace.db import connection as db
+from reviewtrace.retrieval.errors import RateLimitedError, SkippedError
 from reviewtrace.retrieval.models import PaperMetadata, SearchQuery
 
 # Per-source concurrency limits
@@ -59,12 +60,21 @@ async def _run_one(
 
         try:
             papers = await _dispatch(query, progress_cb)
+        except RateLimitedError as e:
+            print(f"[orchestrator] {query.source} / '{query.query}' rate limited: {e}")
+            audit.log_run_done(run_id, 0, "rate_limited")
+            return []
+        except SkippedError as e:
+            print(f"[orchestrator] {query.source} / '{query.query}' skipped: {e}")
+            audit.log_run_done(run_id, 0, "skipped")
+            return []
         except Exception as e:
             print(f"[orchestrator] {query.source} / '{query.query}' error: {e}")
             audit.log_run_done(run_id, 0, "error")
             return []
 
-        audit.log_run_done(run_id, len(papers), "done")
+        status = "zero_results" if len(papers) == 0 else "done"
+        audit.log_run_done(run_id, len(papers), status)
 
         for paper in papers:
             db.insert_paper(paper.to_db_dict())

@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 
+from reviewtrace.retrieval.errors import RateLimitedError
 from reviewtrace.retrieval.models import PaperMetadata
 from reviewtrace.retrieval.normalizer import from_arxiv
 
@@ -29,6 +30,7 @@ async def search(
     batch_size = min(100, max_results)
     start = 0
     consecutive_429 = 0
+    _rate_limited = False
 
     async with httpx.AsyncClient(timeout=30) as client:
         while len(results) < max_results:
@@ -65,6 +67,7 @@ async def search(
                     print(f"[arxiv] {msg}")
                     if progress_cb:
                         progress_cb("arxiv", msg)
+                    _rate_limited = True
                     break
 
             if not resp.is_success:
@@ -84,6 +87,8 @@ async def search(
 
             await asyncio.sleep(3.0)  # arXiv requests ≥3s between calls
 
+    if _rate_limited:
+        raise RateLimitedError("arXiv: gave up after repeated 429 responses")
     return results[:max_results]
 
 

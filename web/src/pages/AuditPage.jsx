@@ -9,8 +9,20 @@ const SOURCE_COLORS = {
 
 const STATUS_COLORS = {
   done: 'bg-green-100 text-green-700',
+  zero_results: 'bg-gray-100 text-gray-500',
+  rate_limited: 'bg-orange-100 text-orange-700',
+  skipped: 'bg-gray-100 text-gray-400',
   error: 'bg-red-100 text-red-700',
   pending: 'bg-yellow-100 text-yellow-700',
+};
+
+const STATUS_LABELS = {
+  done: 'done',
+  zero_results: 'zero results',
+  rate_limited: 'rate limited',
+  skipped: 'skipped',
+  error: 'error',
+  pending: 'pending',
 };
 
 function RunRow({ run }) {
@@ -23,7 +35,7 @@ function RunRow({ run }) {
             {run.source || 'unknown'}
           </span>
           <span className={`px-2 py-0.5 rounded text-xs ${STATUS_COLORS[run.status] || 'bg-gray-100 text-gray-500'}`}>
-            {run.status}
+            {STATUS_LABELS[run.status] || run.status}
           </span>
           <span className="text-xs bg-gray-50 text-gray-500 px-2 py-0.5 rounded">
             {run.expansion_type}
@@ -58,7 +70,7 @@ export default function AuditPage() {
 
   const stats = {
     total: runs.length,
-    done: runs.filter((r) => r.status === 'done').length,
+    done: runs.filter((r) => r.status === 'done' || r.status === 'zero_results').length,
     total_results: runs.reduce((s, r) => s + (r.result_count || 0), 0),
   };
 

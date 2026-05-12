@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from reviewtrace.config.settings import SEMANTIC_SCHOLAR_API_KEY
+from reviewtrace.retrieval.errors import RateLimitedError
 from reviewtrace.retrieval.models import PaperMetadata
 from reviewtrace.retrieval.normalizer import from_semantic_scholar
 
@@ -27,6 +28,8 @@ async def search(query: str, max_results: int = 50) -> list[PaperMetadata]:
     results: list[dict] = []
     offset = 0
     batch_size = min(100, max_results)
+    consecutive_429 = 0
+    _MAX_429 = 3
 
     async with httpx.AsyncClient(timeout=30, headers=_HEADERS) as client:
         while len(results) < max_results:
@@ -39,10 +42,18 @@ async def search(query: str, max_results: int = 50) -> list[PaperMetadata]:
             try:
                 resp = await client.get(f"{BASE_URL}/paper/search", params=params)
                 if resp.status_code == 429:
-                    print("[semantic_scholar] Rate limited, waiting 10s")
+                    consecutive_429 += 1
+                    if consecutive_429 >= _MAX_429:
+                        raise RateLimitedError(
+                            f"Semantic Scholar: gave up after {consecutive_429} consecutive 429 responses"
+                        )
+                    print(f"[semantic_scholar] Rate limited (attempt {consecutive_429}), waiting 10s")
                     await asyncio.sleep(10)
                     continue
+                consecutive_429 = 0
                 resp.raise_for_status()
+            except RateLimitedError:
+                raise
             except httpx.HTTPError as e:
                 print(f"[semantic_scholar] HTTP error: {e}")
                 break
