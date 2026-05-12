@@ -1,6 +1,7 @@
 """Tests for the `reviewtrace demo` CLI command."""
 
 import json
+import re
 
 from typer.testing import CliRunner
 
@@ -9,13 +10,18 @@ from reviewtrace.cli import _DEMO_CRITERIA, _DEMO_OUTPUT_DIR, _DEMO_SEEDS, app
 runner = CliRunner()
 
 
+def _strip_ansi(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
 def test_demo_help():
     result = runner.invoke(app, ["demo", "--help"])
+    output = _strip_ansi(result.output)
     assert result.exit_code == 0
-    assert "demo" in result.output.lower()
-    assert "--output-dir" in result.output
-    assert "--max-results" in result.output
-    assert "--max-queries" in result.output
+    assert "demo" in output.lower()
+    assert "--output-dir" in output
+    assert "--max-results" in output
+    assert "--max-queries" in output
 
 
 def test_demo_missing_seeds_shows_error(tmp_path):
