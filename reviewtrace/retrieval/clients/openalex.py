@@ -47,7 +47,7 @@ async def search(query: str, max_results: int = 50) -> list[PaperMetadata]:
                 break
 
             results.extend(batch)
-            cursor = (data.get("meta") or {}).get("next_cursor")
+            cursor = (data.get("meta") or {}).get("next_cursor") or ""
             if not cursor:
                 break
 
