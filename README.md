@@ -98,7 +98,15 @@ GEMINI_API_KEY=...
 SEMANTIC_SCHOLAR_API_KEY=...
 ```
 
-### 3. Run (Web UI — recommended)
+### 3. Run (one-command demo)
+
+```bash
+reviewtrace demo
+```
+
+Runs the sparse autoencoders example with demo settings (3 queries, 15 results/query, no citation expansion). Outputs are written to `outputs/sparse_autoencoders_demo/`. No S2 API key required.
+
+### 4. Run (Web UI)
 
 ```bash
 reviewtrace web
@@ -106,15 +114,18 @@ reviewtrace web
 
 The browser opens automatically at `http://127.0.0.1:8000`. Demo mode is on by default — safe to try without an S2 key.
 
-### 4. Run (CLI — demo)
+### 5. Run (CLI — custom topic with demo settings)
 
 ```bash
 reviewtrace run \
   --topic "sparse autoencoders for mechanistic interpretability" \
+  --seeds examples/sparse_autoencoders/seeds.txt \
+  --criteria examples/sparse_autoencoders/criteria.json \
+  --output-dir outputs/sparse_autoencoders_demo/ \
   --demo
 ```
 
-### 5. Run (CLI — full)
+### 6. Run (CLI — full)
 
 ```bash
 reviewtrace run \
@@ -181,6 +192,7 @@ The Web UI has five pages:
 ## CLI Reference
 
 ```
+reviewtrace demo      One-command sparse autoencoders demo (fast, no expansion)
 reviewtrace run       Full pipeline end-to-end
 reviewtrace retrieve  Keyword retrieval only
 reviewtrace expand    Citation graph expansion only

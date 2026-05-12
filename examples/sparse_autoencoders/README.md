@@ -7,15 +7,12 @@ This example demonstrates a small auditable literature review run on sparse auto
 This is the recommended first run. It uses a small number of queries, skips citation expansion, and finishes in a few minutes.
 
 ```bash
-reviewtrace run \
-  --topic "Sparse Autoencoders for Mechanistic Interpretability" \
-  --seeds examples/sparse_autoencoders/seeds.txt \
-  --criteria examples/sparse_autoencoders/criteria.json \
-  --output-dir outputs/sparse_autoencoders_demo/ \
-  --demo
+reviewtrace demo
 ```
 
-Or with explicit options:
+Outputs are written to `outputs/sparse_autoencoders_demo/`.
+
+**Equivalent explicit command** (for customisation):
 
 ```bash
 reviewtrace run \
@@ -23,8 +20,7 @@ reviewtrace run \
   --seeds examples/sparse_autoencoders/seeds.txt \
   --criteria examples/sparse_autoencoders/criteria.json \
   --output-dir outputs/sparse_autoencoders_demo/ \
-  --max-results 10 \
-  --skip-expand
+  --demo
 ```
 
 ## Full run

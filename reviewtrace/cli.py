@@ -7,6 +7,15 @@ import typer
 
 app = typer.Typer(help="ReviewTrace — auditable literature review pipeline")
 
+# ---------------------------------------------------------------------------
+# Demo defaults
+# ---------------------------------------------------------------------------
+
+_DEMO_TOPIC = "Sparse Autoencoders for Mechanistic Interpretability"
+_DEMO_SEEDS = Path("examples/sparse_autoencoders/seeds.txt")
+_DEMO_CRITERIA = Path("examples/sparse_autoencoders/criteria.json")
+_DEMO_OUTPUT_DIR = Path("outputs/sparse_autoencoders_demo")
+
 
 # ---------------------------------------------------------------------------
 # T8.1  Full pipeline
@@ -31,33 +40,6 @@ def run(
 
     Steps: retrieve → load seeds → dedup → [expand → dedup] → screen → extract → taxonomize → export
     """
-    import asyncio
-
-    from reviewtrace.audit.dedup import run_dedup
-    from reviewtrace.audit.export import export_json, export_markdown
-    from reviewtrace.db.connection import fetchall, init_db
-    from reviewtrace.evidence.extractor import run_extraction
-    from reviewtrace.evidence.matrix import export_items_json, export_matrix_csv
-    from reviewtrace.expansion.controller import expand as run_expand
-    from reviewtrace.export.csv_export import export_papers_csv
-    from reviewtrace.export.graphml_export import export_graphml
-    from reviewtrace.retrieval.orchestrator import run_queries
-    from reviewtrace.retrieval.planner import plan_queries
-    from reviewtrace.retrieval.seed_loader import load_seeds
-    from reviewtrace.screening.policy import load_policy
-    from reviewtrace.screening.screener import run_screening
-    from reviewtrace.taxonomy.controller import run_taxonomy
-    from reviewtrace.taxonomy.exporter import export_taxonomy_md
-
-    init_db(db_path)
-    out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
-
-    typer.echo(f"\n{'='*60}")
-    typer.echo(f"  ReviewTrace  |  {topic}")
-    typer.echo(f"{'='*60}\n")
-
-    # Apply demo defaults
     if demo:
         if max_results == 50:
             max_results = 15
@@ -67,68 +49,72 @@ def run(
             skip_expand = True
         typer.echo("[demo] Demo mode enabled: max_results=15, depth=0, skip_expand=True, max 3 queries")
 
-    # 1. Keyword retrieval
-    typer.echo("[1/7] Keyword retrieval…")
-    queries = plan_queries(topic, max_results_per_query=max_results, demo=demo, max_queries=max_queries)
-    papers = asyncio.run(run_queries(queries))
-    typer.echo(f"      {len(papers)} papers retrieved")
+    _execute_pipeline(
+        topic=topic,
+        seeds=seeds,
+        criteria=criteria,
+        db_path=db_path,
+        output_dir=output_dir,
+        max_results=max_results,
+        depth=depth,
+        max_per_hop=max_per_hop,
+        llm_delay=llm_delay,
+        skip_expand=skip_expand,
+        demo=demo,
+        max_queries=max_queries,
+    )
 
-    # 2. Seed papers
-    seed_ids: list[str] = []
-    if seeds:
-        typer.echo("[2/7] Loading seed papers…")
-        seed_ids = load_seeds(seeds, progress_cb=lambda msg: typer.echo(f"      {msg}"))
-    else:
-        typer.echo("[2/7] No seeds file — skipping seed load")
 
-    # 3. Dedup
-    typer.echo("[3/7] Deduplication…")
-    r = run_dedup()
-    typer.echo(f"      {r.total_before} → {r.total_after} papers ({r.fuzzy_merges} fuzzy merges)")
+# ---------------------------------------------------------------------------
+# One-command demo
+# ---------------------------------------------------------------------------
 
-    # 4. Citation graph expansion
-    if not skip_expand:
-        typer.echo("[4/7] Citation graph expansion (BFS)…")
-        expand_seeds = seed_ids or [r["id"] for r in fetchall("SELECT id FROM papers")]
-        exp = asyncio.run(run_expand(expand_seeds, max_depth=depth, max_papers_per_hop=max_per_hop))
-        typer.echo(f"      +{exp.new_papers_count} papers in {exp.total_hops} hops")
-        r2 = run_dedup()
-        typer.echo(f"      Dedup after expansion: {r2.total_after} canonical papers")
-    else:
-        typer.echo("[4/7] Citation graph expansion skipped (--skip-expand)")
+@app.command()
+def demo(
+    output_dir: Path = typer.Option(_DEMO_OUTPUT_DIR, "--output-dir", "-o", help="Output directory"),
+    max_results: int = typer.Option(15, "--max-results", "-n", help="Max results per query"),
+    max_queries: int = typer.Option(3, "--max-queries", help="Number of search queries"),
+    topic: str = typer.Option(_DEMO_TOPIC, "--topic", "-t", help="Research topic"),
+    seeds: Path = typer.Option(_DEMO_SEEDS, "--seeds", "-s", help="Seeds file"),
+    criteria: Path = typer.Option(_DEMO_CRITERIA, "--criteria", "-c", help="Screening criteria JSON file"),
+    db_path: Path = typer.Option(Path("reviewtrace.db"), "--db", help="SQLite database path"),
+) -> None:
+    """Run the sparse autoencoders demo pipeline (fast, no citation expansion).
 
-    # 5. Screening
-    typer.echo("[5/7] Screening…")
-    sc = _load_criteria(criteria, topic)
-    policy = load_policy()
-    decisions = run_screening(sc, policy=policy, delay_seconds=llm_delay)
-    inc = sum(1 for d in decisions if d.decision == "include")
-    typer.echo(f"      include={inc}  exclude={len(decisions)-inc}")
+    Equivalent to:
+      reviewtrace run --topic "..." --seeds examples/... --criteria examples/... --demo
+    """
+    # Validate that example files exist
+    missing = [p for p in (seeds, criteria) if not p.exists()]
+    if missing:
+        for p in missing:
+            typer.echo(f"Error: required file not found: {p}", err=True)
+        typer.echo(
+            "Tip: run this command from the repository root, or pass --seeds / --criteria explicitly.",
+            err=True,
+        )
+        raise typer.Exit(1)
 
-    # 6. Evidence extraction
-    typer.echo("[6/7] Evidence extraction…")
-    items = run_extraction(delay_seconds=llm_delay)
-    typer.echo(f"      {len(items)} evidence items extracted")
+    typer.echo("\nRunning ReviewTrace demo:")
+    typer.echo(f"  topic:    {topic}")
+    typer.echo(f"  seeds:    {seeds}")
+    typer.echo(f"  criteria: {criteria}")
+    typer.echo(f"  output:   {output_dir}/\n")
 
-    # 7. Taxonomy
-    typer.echo("[7/7] Building taxonomy…")
-    tax = run_taxonomy()
-    typer.echo(f"      {tax.n_nodes} nodes · {tax.n_evidence_links} evidence links")
-
-    # Export everything
-    typer.echo("\nExporting outputs…")
-    export_papers_csv(out / "papers.csv")
-    export_json(out / "retrieval_audit.json")
-    export_markdown(out / "retrieval_audit.md")
-    export_graphml(out / "citation_graph.graphml")
-    export_matrix_csv(out / "evidence_matrix.csv")
-    export_items_json(out / "evidence_items.json")
-    export_taxonomy_md(out / "taxonomy.md")
-
-    typer.echo(f"\nDone. Outputs written to {out}/")
-    typer.echo("  papers.csv · retrieval_audit.json · retrieval_audit.md")
-    typer.echo("  citation_graph.graphml · evidence_matrix.csv")
-    typer.echo("  evidence_items.json · taxonomy.md")
+    _execute_pipeline(
+        topic=topic,
+        seeds=seeds,
+        criteria=criteria,
+        db_path=db_path,
+        output_dir=output_dir,
+        max_results=max_results,
+        depth=0,
+        max_per_hop=30,
+        llm_delay=0.5,
+        skip_expand=True,
+        demo=True,
+        max_queries=max_queries,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +337,116 @@ def serve(
     os.environ.setdefault("REVIEWTRACE_OUTPUT_DIR", str(output_dir))
     typer.echo(f"Starting ReviewTrace API at http://{host}:{port}")
     uvicorn.run("reviewtrace.api.app:app", host=host, port=port, reload=reload)
+
+
+# ---------------------------------------------------------------------------
+# Shared pipeline implementation
+# ---------------------------------------------------------------------------
+
+def _execute_pipeline(  # noqa: C901
+    *,
+    topic: str,
+    seeds: Path | None,
+    criteria: Path | None,
+    db_path: Path,
+    output_dir: Path,
+    max_results: int,
+    depth: int,
+    max_per_hop: int,
+    llm_delay: float,
+    skip_expand: bool,
+    demo: bool,
+    max_queries: int | None,
+) -> None:
+    """Shared pipeline body used by both `run` and `demo`."""
+    import asyncio
+
+    from reviewtrace.audit.dedup import run_dedup
+    from reviewtrace.audit.export import export_json, export_markdown
+    from reviewtrace.db.connection import fetchall, init_db
+    from reviewtrace.evidence.extractor import run_extraction
+    from reviewtrace.evidence.matrix import export_items_json, export_matrix_csv
+    from reviewtrace.expansion.controller import expand as run_expand
+    from reviewtrace.export.csv_export import export_papers_csv
+    from reviewtrace.export.graphml_export import export_graphml
+    from reviewtrace.retrieval.orchestrator import run_queries
+    from reviewtrace.retrieval.planner import plan_queries
+    from reviewtrace.retrieval.seed_loader import load_seeds
+    from reviewtrace.screening.policy import load_policy
+    from reviewtrace.screening.screener import run_screening
+    from reviewtrace.taxonomy.controller import run_taxonomy
+    from reviewtrace.taxonomy.exporter import export_taxonomy_md
+
+    init_db(db_path)
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    typer.echo(f"\n{'='*60}")
+    typer.echo(f"  ReviewTrace  |  {topic}")
+    typer.echo(f"{'='*60}\n")
+
+    # 1. Keyword retrieval
+    typer.echo("[1/7] Keyword retrieval…")
+    queries = plan_queries(topic, max_results_per_query=max_results, demo=demo, max_queries=max_queries)
+    papers = asyncio.run(run_queries(queries))
+    typer.echo(f"      {len(papers)} papers retrieved")
+
+    # 2. Seed papers
+    seed_ids: list[str] = []
+    if seeds:
+        typer.echo("[2/7] Loading seed papers…")
+        seed_ids = load_seeds(seeds, progress_cb=lambda msg: typer.echo(f"      {msg}"))
+    else:
+        typer.echo("[2/7] No seeds file — skipping seed load")
+
+    # 3. Dedup
+    typer.echo("[3/7] Deduplication…")
+    r = run_dedup()
+    typer.echo(f"      {r.total_before} → {r.total_after} papers ({r.fuzzy_merges} fuzzy merges)")
+
+    # 4. Citation graph expansion
+    if not skip_expand:
+        typer.echo("[4/7] Citation graph expansion (BFS)…")
+        expand_seeds = seed_ids or [row["id"] for row in fetchall("SELECT id FROM papers")]
+        exp = asyncio.run(run_expand(expand_seeds, max_depth=depth, max_papers_per_hop=max_per_hop))
+        typer.echo(f"      +{exp.new_papers_count} papers in {exp.total_hops} hops")
+        r2 = run_dedup()
+        typer.echo(f"      Dedup after expansion: {r2.total_after} canonical papers")
+    else:
+        typer.echo("[4/7] Citation graph expansion skipped (--skip-expand)")
+
+    # 5. Screening
+    typer.echo("[5/7] Screening…")
+    sc = _load_criteria(criteria, topic)
+    policy = load_policy()
+    decisions = run_screening(sc, policy=policy, delay_seconds=llm_delay)
+    inc = sum(1 for d in decisions if d.decision == "include")
+    typer.echo(f"      include={inc}  exclude={len(decisions)-inc}")
+
+    # 6. Evidence extraction
+    typer.echo("[6/7] Evidence extraction…")
+    items = run_extraction(delay_seconds=llm_delay)
+    typer.echo(f"      {len(items)} evidence items extracted")
+
+    # 7. Taxonomy
+    typer.echo("[7/7] Building taxonomy…")
+    tax = run_taxonomy()
+    typer.echo(f"      {tax.n_nodes} nodes · {tax.n_evidence_links} evidence links")
+
+    # Export everything
+    typer.echo("\nExporting outputs…")
+    export_papers_csv(out / "papers.csv")
+    export_json(out / "retrieval_audit.json")
+    export_markdown(out / "retrieval_audit.md")
+    export_graphml(out / "citation_graph.graphml")
+    export_matrix_csv(out / "evidence_matrix.csv")
+    export_items_json(out / "evidence_items.json")
+    export_taxonomy_md(out / "taxonomy.md")
+
+    typer.echo(f"\nDone. Outputs written to {out}/")
+    typer.echo("  papers.csv · retrieval_audit.json · retrieval_audit.md")
+    typer.echo("  citation_graph.graphml · evidence_matrix.csv")
+    typer.echo("  evidence_items.json · taxonomy.md")
 
 
 # ---------------------------------------------------------------------------
