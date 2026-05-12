@@ -7,7 +7,6 @@ Human override: export decisions to CSV, edit, re-import.
 """
 
 import csv
-import json
 import time
 import uuid
 from pathlib import Path
@@ -15,6 +14,7 @@ from pathlib import Path
 from reviewtrace.audit.dedup import get_canonical_papers
 from reviewtrace.db import connection as db
 from reviewtrace.llm import complete
+from reviewtrace.llm_json import parse_llm_json
 from reviewtrace.screening.classifier import classify_source
 from reviewtrace.screening.models import ScreeningCriteria, ScreeningDecision
 from reviewtrace.screening.policy import SourcePolicy, load_policy
@@ -37,11 +37,12 @@ Paper to screen:
   Abstract: {abstract}
 
 Carefully evaluate the paper against the criteria above.
-Return ONLY a JSON object with these fields:
+Return only one valid JSON object with these fields:
   "decision":   "include" | "exclude" | "uncertain"
   "reason":     one or two sentences explaining your decision
   "confidence": a float between 0.0 (very unsure) and 1.0 (very sure)
 
+Do not use Markdown. Do not wrap the JSON in code fences. Do not include text before or after the JSON.
 Example: {{"decision": "include", "reason": "The paper proposes sparse autoencoders for circuit analysis.", "confidence": 0.92}}
 """
 
@@ -166,13 +167,8 @@ def _llm_screen(
     )
 
     try:
-        raw = complete(prompt, max_tokens=256).strip()
-        # Strip markdown code fences if LLM wraps response
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        parsed = json.loads(raw)
+        raw = complete(prompt, max_tokens=256)
+        parsed = parse_llm_json(raw)
         decision = parsed.get("decision", "uncertain")
         if decision not in ("include", "exclude", "uncertain"):
             decision = "uncertain"
@@ -184,12 +180,12 @@ def _llm_screen(
             source_type_label=source_type,
             screened_by="llm",
         )
-    except Exception as e:
-        print(f"[screener] LLM error for {paper['id']}: {e}")
+    except Exception:
+        print(f"[screener] LLM output parse failed for {paper['id']}; marked as uncertain.")
         return ScreeningDecision(
             paper_id=paper["id"],
             decision="uncertain",
-            reason=f"LLM screening failed: {e}",
+            reason="LLM output could not be parsed.",
             confidence=0.0,
             source_type_label=source_type,
             screened_by="llm",

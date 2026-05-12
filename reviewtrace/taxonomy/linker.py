@@ -7,11 +7,11 @@ This is the provenance layer: the link record answers
 "why does this taxonomy node exist?" with specific evidence.
 """
 
-import json
 import uuid
 
 from reviewtrace.db import connection as db
 from reviewtrace.llm import complete
+from reviewtrace.llm_json import parse_llm_json
 from reviewtrace.taxonomy.embedder import embed_texts, top_k_indices
 from reviewtrace.taxonomy.models import TaxonomyNode
 
@@ -34,8 +34,9 @@ Evidence item:
 Does this evidence directly support, illustrate, or exemplify the taxonomy \
 node described above?
 
-Return ONLY a JSON object:
-{{"relevant": true or false, "reason": "one sentence"}}
+Return only one valid JSON object with fields "relevant" (true or false) and "reason" (one sentence).
+Do not use Markdown. Do not wrap the JSON in code fences. Do not include text before or after the JSON.
+Example: {{"relevant": true, "reason": "The evidence directly describes the method proposed by this node."}}
 """
 
 
@@ -105,15 +106,11 @@ def _llm_confirm(node: TaxonomyNode, evidence_row: dict) -> bool:
         paper_year=evidence_row.get("paper_year") or "n/a",
     )
     try:
-        raw = complete(prompt, max_tokens=128).strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        parsed = json.loads(raw)
+        raw = complete(prompt, max_tokens=128)
+        parsed = parse_llm_json(raw)
         return bool(parsed.get("relevant", False))
-    except Exception as e:
-        print(f"[linker] LLM error: {e}")
+    except Exception:
+        print("[linker] LLM output parse failed; skipped link.")
         return False
 
 

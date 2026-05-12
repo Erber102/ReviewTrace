@@ -4,13 +4,13 @@ Sends paper title + abstract to the LLM and returns a list of structured
 EvidenceItems. Full-text extraction (T5.2) is deferred to a later phase.
 """
 
-import json
 import time
 import uuid
 
 from reviewtrace.db import connection as db
 from reviewtrace.evidence.models import EVIDENCE_TYPES, EvidenceItem
 from reviewtrace.llm import complete
+from reviewtrace.llm_json import parse_llm_json
 
 _EXTRACT_PROMPT = """\
 You are extracting structured evidence from a research paper abstract for a \
@@ -36,11 +36,8 @@ Evidence type definitions:
   comparison           — a comparison with existing methods or baselines
   dataset_contribution — a new dataset, benchmark, or evaluation suite introduced
 
-Return ONLY a JSON array, no prose. Example:
-[
-  {{"evidence_type": "method_proposal", "content": "We propose sparse autoencoders to decompose residual stream activations into interpretable features."}},
-  {{"evidence_type": "empirical_finding", "content": "Our method achieves 95% reconstruction accuracy with 10× sparsity on GPT-2 activations."}}
-]
+Return only a valid JSON array. Do not use Markdown. Do not wrap the JSON in code fences. Do not include text before or after the array.
+Example: [{{"evidence_type": "method_proposal", "content": "We propose sparse autoencoders to decompose residual stream activations into interpretable features."}}]
 
 If the abstract yields no extractable evidence, return [].
 """
@@ -61,15 +58,14 @@ def extract_paper(paper: dict) -> list[EvidenceItem]:
     )
 
     try:
-        raw = complete(prompt, max_tokens=1024).strip()
-        # Strip markdown fences if present
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        items_raw: list[dict] = json.loads(raw)
-    except Exception as e:
-        print(f"[extractor] LLM/parse error for {paper['id']}: {e}")
+        raw = complete(prompt, max_tokens=1024)
+        items_raw: list[dict] = parse_llm_json(raw)
+    except Exception:
+        print(f"[extractor] LLM output parse failed for {paper['id']}; skipped evidence extraction.")
+        return []
+
+    if not isinstance(items_raw, list):
+        print(f"[extractor] LLM output parse failed for {paper['id']}; skipped evidence extraction.")
         return []
 
     items: list[EvidenceItem] = []

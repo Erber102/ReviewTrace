@@ -4,11 +4,11 @@ For each cluster, sends a sample of paper titles + abstracts to the LLM
 and asks it to name the research direction and write a short description.
 """
 
-import json
 import uuid
 
 from reviewtrace.db import connection as db
 from reviewtrace.llm import complete
+from reviewtrace.llm_json import parse_llm_json
 from reviewtrace.taxonomy.models import TaxonomyNode
 
 _LABEL_PROMPT = """\
@@ -22,8 +22,9 @@ Based on these papers, provide:
 2. A description (2-3 sentences) explaining what these papers have in common and \
 why they form a coherent research area
 
-Return ONLY a JSON object:
-{{"label": "...", "description": "..."}}
+Return only one valid JSON object with fields "label" (3-8 words) and "description" (2-3 sentences).
+Do not use Markdown. Do not wrap the JSON in code fences. Do not include text before or after the JSON.
+Example: {{"label": "Sparse Feature Learning", "description": "Papers in this cluster..."}}
 """
 
 _MAX_PAPERS_PER_LABEL = 8  # send at most this many papers to the LLM per cluster
@@ -58,16 +59,12 @@ def _label_cluster(cluster_id: int, papers: list[dict]) -> TaxonomyNode:
     prompt = _LABEL_PROMPT.format(papers_block=papers_block)
 
     try:
-        raw = complete(prompt, max_tokens=256).strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        parsed = json.loads(raw)
-        label = parsed.get("label", f"Cluster {cluster_id}").strip()
-        description = parsed.get("description", "").strip()
-    except Exception as e:
-        print(f"[labeler] LLM error for cluster {cluster_id}: {e}")
+        raw = complete(prompt, max_tokens=256)
+        parsed = parse_llm_json(raw)
+        label = str(parsed.get("label", f"Cluster {cluster_id}")).strip()
+        description = str(parsed.get("description", "")).strip()
+    except Exception:
+        print(f"[labeler] LLM output parse failed for cluster {cluster_id}; using fallback label.")
         label = f"Cluster {cluster_id}"
         description = f"Auto-labeled cluster containing {len(papers)} papers."
 
