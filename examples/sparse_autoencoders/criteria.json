@@ -1,0 +1,13 @@
+{
+  "topic": "Sparse Autoencoders for Mechanistic Interpretability",
+  "inclusion": [
+    "Proposes, evaluates, or analyzes sparse autoencoders for neural network interpretability",
+    "Discusses learned features, dictionary elements, monosemanticity, superposition, or feature extraction from neural activations",
+    "Contains empirical or conceptual evidence relevant to mechanistic interpretability"
+  ],
+  "exclusion": [
+    "Mentions autoencoders only as a generic representation learning method",
+    "Does not involve neural network interpretability or model analysis",
+    "Is primarily about compression, denoising, or generative modeling without interpretability relevance"
+  ]
+}

@@ -1,0 +1,7 @@
+id,title,authors,year,venue,doi,arxiv_id,url,decision,is_duplicate
+a1b2c3d4,"Sparse Autoencoders Find Highly Interpretable Features in Language Models","[""Bricken, T."", ""Templeton, A."", ""Batson, J.""]",2023,arXiv,,2309.08600,https://arxiv.org/abs/2309.08600,include,False
+e5f6a7b8,"Scaling and evaluating sparse autoencoders","[""Gao, L."", ""la Tour, T."", ""Tillman, H.""]",2024,arXiv,,2406.04093,https://arxiv.org/abs/2406.04093,include,False
+c9d0e1f2,"Towards Monosemanticity: Decomposing Language Models With Dictionary Learning","[""Bricken, T."", ""Templeton, A.""]",2023,Transformer Circuits Thread,,2309.05144,https://arxiv.org/abs/2309.05144,include,False
+b3a4c5d6,"Improving Dictionary Learning with Gated Sparse Autoencoders","[""Rajamanoharan, S.""]",2024,arXiv,,2404.16014,https://arxiv.org/abs/2404.16014,include,False
+f7e8d9c0,"A sparse autoencoder for generic autoencoder features","[""Smith, J.""]",2023,arXiv,,,https://arxiv.org/abs/2305.00000,exclude,False
+g1h2i3j4,"Variational Autoencoders for Representation Learning","[""Doe, A.""]",2021,NeurIPS,10.1234/example,,https://example.com,exclude,False

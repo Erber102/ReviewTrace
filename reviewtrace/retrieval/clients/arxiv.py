@@ -3,6 +3,7 @@
 import asyncio
 import re
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -15,13 +16,19 @@ _NS = {
     "atom": "https://www.w3.org/2005/Atom",
     "arxiv": "https://arxiv.org/schemas/atom",
 }
+_RETRY_DELAYS = [10, 30]  # seconds to wait on 1st and 2nd 429
 
 
-async def search(query: str, max_results: int = 50) -> list[PaperMetadata]:
-    """Search arXiv. query uses arXiv query syntax (plain text also works)."""
+async def search(
+    query: str,
+    max_results: int = 50,
+    progress_cb: Callable[[str, str], None] | None = None,
+) -> list[PaperMetadata]:
+    """Search arXiv. Retries on 429 with 10s / 30s backoff, then skips."""
     results: list[PaperMetadata] = []
     batch_size = min(100, max_results)
     start = 0
+    consecutive_429 = 0
 
     async with httpx.AsyncClient(timeout=30) as client:
         while len(results) < max_results:
@@ -32,13 +39,39 @@ async def search(query: str, max_results: int = 50) -> list[PaperMetadata]:
                 "sortBy": "relevance",
                 "sortOrder": "descending",
             }
+
             try:
                 resp = await client.get(BASE_URL, params=params)
-                resp.raise_for_status()
-            except httpx.HTTPError as e:
-                print(f"[arxiv] HTTP error: {e}")
+            except httpx.RequestError as e:
+                print(f"[arxiv] Request error: {e}")
                 break
 
+            if resp.status_code == 429:
+                if consecutive_429 < len(_RETRY_DELAYS):
+                    delay = _RETRY_DELAYS[consecutive_429]
+                    msg = (
+                        f"Rate limited. Waiting {delay}s before retry..."
+                        if consecutive_429 == 0
+                        else f"Rate limited again. Waiting {delay}s before retry..."
+                    )
+                    print(f"[arxiv] {msg}")
+                    if progress_cb:
+                        progress_cb("arxiv", msg)
+                    consecutive_429 += 1
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    msg = "Skipped after repeated 429 errors. Continuing with other sources."
+                    print(f"[arxiv] {msg}")
+                    if progress_cb:
+                        progress_cb("arxiv", msg)
+                    break
+
+            if not resp.is_success:
+                print(f"[arxiv] HTTP {resp.status_code} error")
+                break
+
+            consecutive_429 = 0
             entries = _parse_feed(resp.text)
             if not entries:
                 break
@@ -49,7 +82,7 @@ async def search(query: str, max_results: int = 50) -> list[PaperMetadata]:
             if len(entries) < batch_size:
                 break
 
-            await asyncio.sleep(3.0)  # arXiv requests 3s between calls
+            await asyncio.sleep(3.0)  # arXiv requests ≥3s between calls
 
     return results[:max_results]
 

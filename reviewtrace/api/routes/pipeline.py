@@ -128,10 +128,32 @@ def _run_pipeline(job_id: str, req: RunRequest) -> None:  # noqa: C901
 
         # 1. Keyword retrieval
         _emit(job_id, "retrieval", "Planning search queries…")
-        queries = plan_queries(req.topic, max_results_per_query=req.max_results)
+
+        # Apply demo-mode defaults
+        effective_max_results = req.max_results
+        effective_depth = req.depth
+        effective_skip_expand = req.skip_expand
+        if req.demo:
+            if req.max_results == 50:
+                effective_max_results = 10
+            if req.depth == 2:
+                effective_depth = 0
+            if not req.skip_expand:
+                effective_skip_expand = True
+
+        queries = plan_queries(
+            req.topic,
+            max_results_per_query=effective_max_results,
+            demo=req.demo,
+            max_queries=req.max_queries,
+        )
         n_sources = len({q.source for q in queries})
         _emit(job_id, "retrieval", f"Running {len(queries)} queries across {n_sources} sources…")
-        papers = _asyncio.run(run_queries(queries))
+
+        def progress_cb(src: str, msg: str) -> None:
+            _emit(job_id, src, msg)
+
+        papers = _asyncio.run(run_queries(queries, progress_cb=progress_cb))
         _emit(job_id, "retrieval", f"✓ {len(papers)} papers retrieved")
 
         # 2. Seed papers
@@ -155,17 +177,18 @@ def _run_pipeline(job_id: str, req: RunRequest) -> None:  # noqa: C901
         _emit(job_id, "dedup", f"✓ {r.total_before} → {r.total_after} papers ({r.fuzzy_merges} fuzzy merges)")
 
         # 4. Citation expansion
-        if not req.skip_expand:
+        if not effective_skip_expand:
             _emit(job_id, "expand", "Building citation graph (BFS)…")
             expand_seeds = seed_ids or [p["id"] for p in fetchall("SELECT id FROM papers")]
             exp = _asyncio.run(
-                run_expand(expand_seeds, max_depth=req.depth, max_papers_per_hop=req.max_per_hop)
+                run_expand(expand_seeds, max_depth=effective_depth, max_papers_per_hop=req.max_per_hop)
             )
             _emit(job_id, "expand", f"✓ +{exp.new_papers_count} papers in {exp.total_hops} hops")
             r2 = run_dedup()
             _emit(job_id, "dedup", f"✓ Post-expansion: {r2.total_after} canonical papers")
         else:
-            _emit(job_id, "expand", "Citation expansion skipped")
+            reason = " (demo mode)" if req.demo and not req.skip_expand else ""
+            _emit(job_id, "expand", f"Citation expansion skipped{reason}")
 
         # 5. Screening
         _emit(job_id, "screening", "Screening papers with LLM…")

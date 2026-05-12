@@ -1,0 +1,42 @@
+[
+  {
+    "id": "ev_001",
+    "paper_id": "a1b2c3d4",
+    "paper_title": "Sparse Autoencoders Find Highly Interpretable Features in Language Models",
+    "evidence_type": "method_proposal",
+    "content": "We train sparse autoencoders on MLP layer activations to decompose them into a dictionary of interpretable features, each corresponding to a monosemantic concept.",
+    "location": "abstract"
+  },
+  {
+    "id": "ev_002",
+    "paper_id": "a1b2c3d4",
+    "paper_title": "Sparse Autoencoders Find Highly Interpretable Features in Language Models",
+    "evidence_type": "empirical_finding",
+    "content": "Learned dictionary features correspond to recognizable concepts such as DNA, programming syntax, and legal language, with high human interpretability ratings.",
+    "location": "results"
+  },
+  {
+    "id": "ev_003",
+    "paper_id": "e5f6a7b8",
+    "paper_title": "Scaling and evaluating sparse autoencoders",
+    "evidence_type": "empirical_finding",
+    "content": "Scaling sparse autoencoders to larger dictionaries substantially improves feature interpretability scores while maintaining reconstruction quality.",
+    "location": "experiments"
+  },
+  {
+    "id": "ev_004",
+    "paper_id": "e5f6a7b8",
+    "paper_title": "Scaling and evaluating sparse autoencoders",
+    "evidence_type": "limitation",
+    "content": "Current evaluation methods for feature interpretability rely on automated scoring that may not fully capture human judgement of concept meaningfulness.",
+    "location": "discussion"
+  },
+  {
+    "id": "ev_005",
+    "paper_id": "c9d0e1f2",
+    "paper_title": "Towards Monosemanticity: Decomposing Language Models With Dictionary Learning",
+    "evidence_type": "theoretical_claim",
+    "content": "Neural network features may represent multiple concepts simultaneously (superposition) when the number of features exceeds the number of neurons, explaining polysemanticity.",
+    "location": "introduction"
+  }
+]

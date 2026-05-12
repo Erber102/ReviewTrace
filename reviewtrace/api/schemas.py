@@ -20,6 +20,8 @@ class RunRequest(BaseModel):
     max_per_hop: int = Field(30, ge=1, le=100)
     llm_delay: float = Field(0.5, ge=0.0, le=10.0)
     skip_expand: bool = False
+    demo: bool = False
+    max_queries: int | None = Field(None, ge=1, le=20)
 
 
 class JobStarted(BaseModel):

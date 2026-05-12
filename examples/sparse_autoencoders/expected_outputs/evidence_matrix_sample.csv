@@ -1,0 +1,5 @@
+paper_id,title,method_proposal,empirical_finding,theoretical_claim,limitation,comparison,dataset_contribution
+a1b2c3d4,"Sparse Autoencoders Find Highly Interpretable Features in Language Models",2,3,1,1,0,0
+e5f6a7b8,"Scaling and evaluating sparse autoencoders",1,4,0,2,2,1
+c9d0e1f2,"Towards Monosemanticity: Decomposing Language Models With Dictionary Learning",1,2,3,1,0,0
+b3a4c5d6,"Improving Dictionary Learning with Gated Sparse Autoencoders",2,2,1,1,1,0

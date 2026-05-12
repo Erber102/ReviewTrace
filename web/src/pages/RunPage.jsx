@@ -23,17 +23,22 @@ function Badge({ type }) {
 }
 
 export default function RunPage() {
+  const DEMO_DEFAULTS = { max_results: 10, depth: 0, skip_expand: true, max_queries: 3 };
+  const FULL_DEFAULTS = { max_results: 50, depth: 2, skip_expand: false, max_queries: null };
+
   const [form, setForm] = useState({
     topic: '',
     seeds: '',
     criteria_topic: '',
     inclusion: '',
     exclusion: '',
-    max_results: 50,
-    depth: 2,
+    max_results: 10,
+    depth: 0,
     max_per_hop: 30,
     llm_delay: 0.5,
-    skip_expand: false,
+    skip_expand: true,
+    demo: true,
+    max_queries: 3,
   });
   const [running, setRunning] = useState(false);
   const [logs, setLogs] = useState([]);
@@ -46,6 +51,10 @@ export default function RunPage() {
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  function toggleDemo(enabled) {
+    setForm((f) => ({ ...f, demo: enabled, ...(enabled ? DEMO_DEFAULTS : FULL_DEFAULTS) }));
   }
 
   async function handleSubmit(e) {
@@ -62,6 +71,7 @@ export default function RunPage() {
       depth: Number(form.depth),
       max_per_hop: Number(form.max_per_hop),
       llm_delay: Number(form.llm_delay),
+      max_queries: form.max_queries != null ? Number(form.max_queries) : null,
     };
 
     try {
@@ -84,6 +94,21 @@ export default function RunPage() {
         <h2 className="text-lg font-semibold mb-4">Pipeline Configuration</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
 
+          {/* Demo mode toggle */}
+          <div className={`flex items-center justify-between px-3 py-2 rounded-lg border ${form.demo ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'}`}>
+            <div>
+              <span className="text-sm font-medium text-gray-700">Demo mode</span>
+              <p className="text-xs text-gray-500 mt-0.5">3 queries · max 10 results · no citation expansion</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleDemo(!form.demo)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${form.demo ? 'bg-amber-400' : 'bg-gray-300'}`}
+            >
+              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${form.demo ? 'translate-x-4' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Topic *</label>
             <input
@@ -103,6 +128,7 @@ export default function RunPage() {
               placeholder={'arXiv:2309.05144\n10.1234/example.doi'}
               value={form.seeds}
               onChange={(e) => set('seeds', e.target.value)}
+              spellCheck={false}
             />
             <p className="text-xs text-gray-400 mt-1">One arXiv ID or DOI per line</p>
           </div>
@@ -115,6 +141,7 @@ export default function RunPage() {
               placeholder="One criterion per line"
               value={form.inclusion}
               onChange={(e) => set('inclusion', e.target.value)}
+              spellCheck={false}
             />
           </div>
 
@@ -126,6 +153,7 @@ export default function RunPage() {
               placeholder="One criterion per line"
               value={form.exclusion}
               onChange={(e) => set('exclusion', e.target.value)}
+              spellCheck={false}
             />
           </div>
 

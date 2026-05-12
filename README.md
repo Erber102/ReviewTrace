@@ -1,24 +1,72 @@
 # ReviewTrace
 
-ReviewTrace is an open-source infrastructure project for auditable literature review.
+**Auditable, traceable academic literature review — powered by LLMs, grounded in provenance.**
 
-It helps researchers trace claims in a literature review back to supporting evidence, flag weak or overbroad citations, and generate reproducible review logs.
+ReviewTrace is open-source research infrastructure that turns a topic string into a reproducible literature review: it retrieves papers from multiple sources, expands the citation graph, screens with an LLM, extracts structured evidence, and builds a taxonomy — all with a full audit trail so every claim can be traced back to its source.
 
-Instead of asking “Can AI write my related work?”, ReviewTrace asks:
+> Instead of asking "Can AI write my related work?",  
+> ReviewTrace asks: **"Can every claim in this review be traced, checked, and audited?"**
 
-“Can every claim in this review be traced, checked, and audited?”
+---
+
+## Why ReviewTrace
+
+Most LLM-assisted literature tools are black boxes. They hallucinate citations, collapse nuance, and produce output you cannot verify. ReviewTrace is designed around the opposite principle: every paper in the corpus has a retrieval provenance record, every screening decision has a recorded rationale, and every taxonomy node links back to specific evidence items from specific papers.
+
+If you are writing a systematic review, a related-work section, or an evidence synthesis and you need to be able to answer **"where did this come from?"** for any claim in your output, ReviewTrace is built for you.
+
+---
+
+## What it does
+
+1. **Retrieval** — keyword search across OpenAlex (primary) and arXiv (primary), plus optional Semantic Scholar citation metadata
+2. **Seed loading** — inject known papers by arXiv ID or DOI; they anchor the citation graph
+3. **Deduplication** — DOI/arXiv-level exact dedup at DB insert time + fuzzy title matching (Levenshtein ≥ 0.9) as a post-pass
+4. **Citation expansion** — BFS traversal of forward and backward citations via Semantic Scholar, configurable depth and breadth
+5. **LLM screening** — include/exclude/uncertain decisions for every paper, with configurable per-source-type policies
+6. **Evidence extraction** — structured evidence items (method, finding, claim, dataset, limitation) extracted from included paper abstracts
+7. **Taxonomy** — embedding-based clustering → LLM-labelled taxonomy nodes → evidence items linked to nodes
+8. **Export** — `papers.csv`, `citation_graph.graphml`, `evidence_matrix.csv`, `evidence_items.json`, `taxonomy.md`, audit JSON + Markdown
+
+---
+
+## Pipeline overview
+
+```mermaid
+flowchart TD
+    A([Topic + Seeds + Criteria]) --> B[Query Planner\nkeyword expansion via LLM]
+    B --> C1[OpenAlex\nprimary]
+    B --> C2[arXiv\nprimary]
+    B --> C3[Semantic Scholar\nsecondary / optional]
+    C1 & C2 & C3 --> D[Deduplication\nDOI + fuzzy title]
+    D --> E[Citation Expansion\nBFS via S2]
+    E --> D
+    D --> F[LLM Screening\ninclude / exclude / uncertain]
+    F --> G[Evidence Extraction\nstructured items per paper]
+    G --> H[Taxonomy\nembed → cluster → label]
+    H --> I([Outputs\nCSV · GraphML · Markdown · JSON])
+```
+
+---
 
 ## Features
 
-- **Web UI** — one-command start (`reviewtrace web`), built with FastAPI + React
-- **Multi-source retrieval** — OpenAlex and arXiv as primary sources; Semantic Scholar for citation expansion
-- **Citation graph expansion** — BFS forward/backward citation traversal with configurable depth
-- **Deduplication** — DOI-level dedup at the DB layer + fuzzy title matching (Levenshtein ≥ 0.9)
-- **LLM screening** — include/exclude decisions with source-type policy gate
-- **Evidence extraction** — structured evidence items (method proposals, empirical findings, etc.)
-- **Taxonomy** — embedding-based clustering → LLM-labelled nodes → evidence linking
-- **Full audit trail** — append-only provenance for every retrieval run and paper
-- **Export** — `papers.csv`, `citation_graph.graphml`, `evidence_matrix.csv`, `taxonomy.md`, audit JSON/Markdown
+| Feature | Details |
+|---|---|
+| Multi-source retrieval | OpenAlex + arXiv primary; S2 secondary (citation metadata + optional search) |
+| LLM keyword expansion | 8 related search terms generated from topic + seed abstracts |
+| Citation graph BFS | Configurable depth (default 2) and breadth (default 30 papers/hop) |
+| Deduplication | Exact (DOI/arXiv) + fuzzy title (threshold 0.9) |
+| Screening | LLM include/exclude/uncertain with per-source-type policy gate |
+| Evidence extraction | 5 evidence types: method, finding, claim, dataset, limitation |
+| Taxonomy | Embedding clusters → LLM-labelled nodes → evidence links |
+| Full audit trail | Append-only SQLite provenance: retrieval runs, paper found events, screening decisions |
+| Export formats | CSV, GraphML, Markdown, JSON |
+| Web UI | FastAPI + React, real-time SSE progress stream |
+| Demo mode | 3 queries, 10 results/query, no citation expansion — safe first run |
+| arXiv rate limiting | 429 retry with 10s / 30s backoff, graceful skip after 3rd failure |
+
+---
 
 ## Quickstart
 
@@ -30,141 +78,165 @@ conda activate reviewtrace
 pip install -e ".[all-llm]"
 ```
 
-### 2. Configure
-
-Copy `.env.template` to `.env` and fill in your API keys:
+Install frontend dependencies (only needed once for the Web UI):
 
 ```bash
-cp .env.template .env
-# Edit .env — set at minimum ANTHROPIC_API_KEY (or another provider key)
+cd web && npm install && cd ..
 ```
 
-Key variables:
+### 2. Configure
 
-| Variable | Description | Default |
-|---|---|---|
-| `REVIEWTRACE_LLM_PROVIDER` | `anthropic` / `openai` / `google` / `deepseek` | `anthropic` |
-| `REVIEWTRACE_LLM_MODEL` | Model name (provider-specific) | `claude-opus-4-6` |
-| `ANTHROPIC_API_KEY` | Anthropic API key | — |
-| `OPENAI_API_KEY` | OpenAI API key | — |
-| `GOOGLE_API_KEY` | Google Gemini API key | — |
-| `DEEPSEEK_API_KEY` | DeepSeek API key | — |
-| `SEMANTIC_SCHOLAR_API_KEY` | S2 key for higher rate limits | — |
+Copy `.env.example` to `.env` and fill in at least one LLM provider key:
 
-### 3a. Web UI (recommended)
+```env
+# At least one of:
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=...
+
+# Optional — enables higher-rate S2 citation metadata
+SEMANTIC_SCHOLAR_API_KEY=...
+```
+
+### 3. Run (Web UI — recommended)
 
 ```bash
 reviewtrace web
 ```
 
-Opens at **http://localhost:8000** — builds the React frontend automatically on first run.
+The browser opens automatically at `http://127.0.0.1:8000`. Demo mode is on by default — safe to try without an S2 key.
 
-```bash
-reviewtrace web --skip-build   # subsequent launches (reuse existing build)
-reviewtrace web --port 8080    # custom port
-```
-
-### 3b. Command line
+### 4. Run (CLI — demo)
 
 ```bash
 reviewtrace run \
-  --topic "Sparse Autoencoders for Mechanistic Interpretability" \
-  --seeds data/seeds.txt \
-  --criteria data/example_criteria.json \
-  --output-dir outputs/
+  --topic "sparse autoencoders for mechanistic interpretability" \
+  --demo
 ```
 
-Outputs written to `outputs/`:
-- `papers.csv` — all papers with screening decisions and duplicate flags
-- `retrieval_audit.json` / `retrieval_audit.md` — full provenance audit
-- `citation_graph.graphml` — citation network (import into Gephi/Cytoscape)
-- `evidence_matrix.csv` — paper × evidence type count matrix
-- `evidence_items.json` — full extracted evidence grouped by paper
-- `taxonomy.md` — thematic clusters with labelled nodes and evidence links
+### 5. Run (CLI — full)
+
+```bash
+reviewtrace run \
+  --topic "sparse autoencoders for mechanistic interpretability" \
+  --seeds examples/sparse_autoencoders/seeds.txt \
+  --criteria examples/sparse_autoencoders/criteria.json \
+  --max-results 50 \
+  --depth 2
+```
+
+---
+
+## Configuration
+
+All settings can be set via environment variables or `.env`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_API_KEY` | — | OpenAI API key (GPT-4o etc.) |
+| `ANTHROPIC_API_KEY` | — | Anthropic API key (Claude) |
+| `GEMINI_API_KEY` | — | Google Gemini API key |
+| `SEMANTIC_SCHOLAR_API_KEY` | — | S2 key (higher rate limits) |
+| `LLM_PROVIDER` | auto-detect | `openai`, `anthropic`, or `gemini` |
+| `LLM_MODEL` | provider default | Override model name |
+| `REVIEWTRACE_DB_PATH` | `reviewtrace.db` | SQLite database path |
+| `REVIEWTRACE_OUTPUT_DIR` | `outputs/` | Output directory |
+
+---
+
+## Outputs
+
+| File | Contents |
+|---|---|
+| `papers.csv` | All papers: title, authors, year, venue, DOI, arXiv ID, screening decision |
+| `retrieval_audit.json` | All retrieval runs with timestamps, query, source, result counts |
+| `retrieval_audit.md` | Human-readable version of the retrieval audit |
+| `citation_graph.graphml` | Paper nodes + citation edges for use in Gephi / NetworkX |
+| `evidence_matrix.csv` | Evidence items × papers matrix |
+| `evidence_items.json` | Structured evidence items with type, content, relevance score |
+| `taxonomy.md` | Taxonomy nodes with labels, descriptions, linked papers and evidence |
 
 ---
 
 ## Web UI
 
-| Page | What it shows |
-|---|---|
-| **Run** | Configure topic / seeds / criteria, run pipeline, live progress log |
-| **Papers** | Filterable table with decision badges, expandable abstract + audit trail |
-| **Taxonomy** | Thematic node cards with linked evidence |
-| **Audit** | Retrieval run timeline by source |
-| **Export** | Stats overview + one-click downloads for all output files |
+```bash
+reviewtrace web                  # build frontend + start server + open browser
+reviewtrace web --skip-build     # reuse existing build (faster on subsequent runs)
+reviewtrace web --port 8080      # custom port
+```
 
-The API is also available at `/docs` (Swagger UI) when the server is running.
+The Web UI has five pages:
+
+- **Run** — configure and launch the pipeline with live SSE progress stream
+- **Papers** — browse and filter the paper corpus; view screening decisions
+- **Taxonomy** — explore taxonomy nodes and linked evidence
+- **Audit** — inspect retrieval runs and paper provenance records
+- **Export** — download output files
+
+**Demo mode** (default enabled in the UI) limits the pipeline to 3 queries and 10 results per query, and skips citation expansion. This is safe for a first run without an S2 API key.
 
 ---
 
 ## CLI Reference
 
-Each pipeline stage can be run individually:
-
-```bash
-# Keyword retrieval only
-reviewtrace retrieve --topic "my topic" --max-results 50
-
-# Citation graph expansion
-reviewtrace expand --depth 2 --max-per-hop 30
-
-# Deduplication
-reviewtrace dedup
-
-# Screening (with optional criteria file)
-reviewtrace screen --topic "my topic" --criteria criteria.json
-
-# Evidence extraction
-reviewtrace extract --output-dir outputs/
-
-# Taxonomy + clustering
-reviewtrace taxonomize --output-dir outputs/
-
-# Export all outputs
-reviewtrace export --output-dir outputs/
+```
+reviewtrace run       Full pipeline end-to-end
+reviewtrace retrieve  Keyword retrieval only
+reviewtrace expand    Citation graph expansion only
+reviewtrace screen    LLM screening only
+reviewtrace dedup     Deduplication pass
+reviewtrace extract   Evidence extraction only
+reviewtrace taxonomize  Taxonomy build only
+reviewtrace export    Export all outputs
+reviewtrace web       Web UI (build + serve + open browser)
+reviewtrace serve     API server only (no build, for dev)
 ```
 
-### `run` options
+Key flags for `reviewtrace run`:
 
-| Flag | Default | Description |
-|---|---|---|
-| `--topic` / `-t` | required | Research topic |
-| `--seeds` / `-s` | none | Seeds file (one arXiv/DOI per line) |
-| `--criteria` / `-c` | none | Screening criteria JSON |
-| `--db` | `reviewtrace.db` | SQLite database path |
-| `--output-dir` / `-o` | `outputs/` | Output directory |
-| `--max-results` / `-n` | 50 | Max results per keyword query |
-| `--depth` | 2 | Citation BFS depth |
-| `--max-per-hop` | 30 | Max papers per expansion hop |
-| `--llm-delay` | 0.5 | Seconds between LLM calls |
-| `--skip-expand` | false | Skip citation graph expansion |
+```
+--topic / -t          Research topic (required)
+--seeds / -s          Seeds file (one arXiv ID or DOI per line)
+--criteria / -c       Screening criteria JSON file
+--max-results / -n    Max results per query (default: 50)
+--depth               Citation expansion depth (default: 2)
+--skip-expand         Skip citation graph expansion
+--demo                Demo mode (max 3 queries, max_results=10, depth=0, no S2)
+--max-queries         Override number of search queries
+--db                  SQLite database path (default: reviewtrace.db)
+--output-dir / -o     Output directory (default: outputs/)
+```
 
 ---
 
-## Seeds file format
+## Seeds and criteria formats
+
+**Seeds file** (`seeds.txt`) — one identifier per line:
 
 ```
-# Comments start with #
-arXiv:2309.05144        # explicit arXiv prefix
-2309.08600              # bare arXiv ID
-10.1234/example         # bare DOI
-DOI:10.1234/example     # explicit DOI prefix
+2309.05144
+arXiv:2401.12631
+10.1162/neco_a_01351
 ```
 
-## Criteria file format
+**Criteria file** (`criteria.json`):
 
 ```json
 {
-  "topic": "Sparse Autoencoders for Mechanistic Interpretability",
+  "topic": "sparse autoencoders for mechanistic interpretability",
   "inclusion": [
-    "Proposes or evaluates sparse autoencoders for neural network analysis"
+    "Proposes or evaluates sparse autoencoders (SAEs) for feature extraction in neural networks",
+    "Applies dictionary learning or sparse coding to neural network activations"
   ],
   "exclusion": [
-    "Does not involve neural network interpretability"
+    "Does not involve neural network interpretability or mechanistic analysis",
+    "Purely theoretical without empirical validation"
   ]
 }
 ```
+
+See `examples/sparse_autoencoders/` for a complete working example.
 
 ---
 
@@ -172,57 +244,96 @@ DOI:10.1234/example     # explicit DOI prefix
 
 ```
 reviewtrace/
-├── config/          # Settings + .env loading
-├── db/              # SQLite schema, migrations, connection helpers
-├── llm.py           # Unified LLM interface (Anthropic/OpenAI/Google/DeepSeek)
-├── retrieval/       # Keyword search clients + orchestrator + seed loader
-├── audit/           # Provenance logger, dedup, audit export
-├── expansion/       # BFS citation expansion (forward + backward)
-├── screening/       # Source classifier, policy gate, LLM screener
-├── evidence/        # Evidence extractor + matrix export
-├── taxonomy/        # Embedder, clusterer, labeler, linker, exporter
-└── export/          # papers.csv + citation_graph.graphml
+  retrieval/        Query planner, orchestrator, API clients (OpenAlex, arXiv, S2)
+  expansion/        Citation graph BFS controller
+  screening/        LLM screener, source-type policy
+  evidence/         Evidence extractor, evidence matrix
+  taxonomy/         Embedder, clusterer, labeller, taxonomy exporter
+  audit/            Dedup, export, audit logger
+  db/               SQLite connection, schema (10 tables), migrations
+  api/              FastAPI app, routes, SSE streaming, Pydantic schemas
+  llm.py            Unified LLM completion interface (OpenAI / Anthropic / Gemini)
+  cli.py            Typer CLI entry point
+web/
+  src/pages/        RunPage, PapersPage, TaxonomyPage, AuditPage, ExportPage
 ```
 
-### Paper identity
+For more detail see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/AUDIT_MODEL.md`](docs/AUDIT_MODEL.md).
 
-Each paper gets a deterministic ID: `sha256("doi:<DOI>")[:16]` or `sha256("arxiv:<ID>")[:16]` or `sha256("title:<title>")[:16]`. This means the same paper retrieved from multiple sources always maps to the same DB row.
+---
 
-### Audit trail
+## Audit model
 
-Every retrieval run and paper-run association is recorded with a deterministic ID (`sha256("<paper_id>:<run_id>")[:16]`), making the audit log idempotent — re-running a query won't create duplicate records.
+Every paper in the corpus has a retrieval provenance record that stores:
+
+- Which query and source it came from
+- The run timestamp and run ID
+- Whether it was inserted as a seed, discovered via keyword search, or found via citation expansion
+- The citation path (for expanded papers)
+
+Screening decisions record the LLM rationale and confidence score. Evidence items link back to specific papers. Taxonomy nodes link to specific evidence items.
+
+This means you can reconstruct the full derivation chain for any claim: taxonomy node → evidence item → paper → retrieval run → query.
+
+See [`docs/AUDIT_MODEL.md`](docs/AUDIT_MODEL.md) for the complete provenance specification.
+
+---
+
+## Current limitations
+
+- **No full-text retrieval** — abstracts only; evidence extraction quality is limited by what is disclosed in the abstract
+- **No persistent paper storage** — PDFs are not downloaded; the pipeline is metadata-only
+- **S2 rate limits** — without an API key, Semantic Scholar calls are rate-limited to ~1 req/s; citation expansion on large corpora will be slow
+- **LLM cost** — screening and evidence extraction make one LLM call per paper; large runs (500+ papers) can be expensive
+- **Single-machine** — no distributed job queue; very large runs (>1000 papers) should use the CLI rather than the Web UI
+- **English-only LLM prompts** — screening and taxonomy labelling are prompted in English; non-English abstracts are processed but prompt language is fixed
+
+---
+
+## Roadmap
+
+- [ ] Full-text retrieval via Unpaywall / Semantic Reader
+- [ ] PRISMA-style flowchart export
+- [ ] Incremental runs (add new papers to existing review)
+- [ ] Multi-review comparison
+- [ ] Export to Zotero / BibTeX
+- [ ] Evaluation harness (precision/recall against gold-standard corpora)
 
 ---
 
 ## Development
 
 ```bash
-# Run tests
-pytest
+# Run linter
+ruff check reviewtrace
 
-# Lint
-ruff check reviewtrace tests
-
-# Type check
+# Type-check
 mypy reviewtrace
+
+# Run tests
+pytest tests/ -v
 ```
 
-### Database schema
-
-10 tables defined in `reviewtrace/db/schema.sql`:
-`papers`, `retrieval_runs`, `paper_retrievals`, `dedup_decisions`, `screening_decisions`, `evidence_items`, `taxonomy_nodes`, `taxonomy_evidence`, `generated_claims`, `claim_verifications`
-
-Migrations in `reviewtrace/db/migrations/` are applied automatically by `init_db()`.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and contribution guidelines.
 
 ---
 
-## LLM providers
+## Citation
 
-| Provider | Install | Env var |
-|---|---|---|
-| Anthropic (default) | included | `ANTHROPIC_API_KEY` |
-| OpenAI | `pip install -e ".[openai]"` | `OPENAI_API_KEY` |
-| Google Gemini | `pip install -e ".[google]"` | `GOOGLE_API_KEY` |
-| DeepSeek | `pip install -e ".[openai]"` | `DEEPSEEK_API_KEY` |
+If you use ReviewTrace in academic work, please cite:
 
-Set `REVIEWTRACE_LLM_PROVIDER=deepseek` and `REVIEWTRACE_LLM_MODEL=deepseek-chat` to use DeepSeek (uses the OpenAI-compatible API).
+```bibtex
+@software{peng2026reviewtrace,
+  author  = {Peng, Yicheng},
+  title   = {{ReviewTrace}: Auditable Literature Review Infrastructure},
+  year    = {2026},
+  url     = {https://github.com/Erber102/ReviewTrace},
+  license = {MIT}
+}
+```
+
+---
+
+## License
+
+MIT © 2026 Yicheng Peng — see [LICENSE](LICENSE).
