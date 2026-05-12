@@ -91,12 +91,12 @@ def run_extraction(
     papers: list[dict] | None = None,
     delay_seconds: float = 0.5,
 ) -> list[EvidenceItem]:
-    """Extract evidence for all included papers not yet processed.
+    """Extract evidence for all included and uncertain papers not yet processed.
 
-    If papers is None, queries the DB for included papers automatically.
+    If papers is None, queries the DB automatically.
     """
     if papers is None:
-        papers = _get_included_papers_without_evidence()
+        papers = _get_extractable_papers_without_evidence()
 
     if not papers:
         print("[extractor] No papers to process.")
@@ -125,16 +125,18 @@ def run_extraction(
 # DB helpers
 # ---------------------------------------------------------------------------
 
-def _get_included_papers_without_evidence() -> list[dict]:
-    """Return included papers that have no evidence items yet."""
+def _get_extractable_papers_without_evidence() -> list[dict]:
+    """Return included and uncertain papers that have no evidence items yet."""
     return db.fetchall(
         """
         SELECT p.*
         FROM papers p
         JOIN screening_decisions sd ON p.id = sd.paper_id
-        WHERE sd.decision = 'include'
+        WHERE sd.decision IN ('include', 'uncertain')
+          AND p.abstract IS NOT NULL
+          AND p.abstract != ''
           AND p.id NOT IN (SELECT DISTINCT paper_id FROM evidence_items)
-        ORDER BY p.year DESC
+        ORDER BY sd.decision ASC, p.year DESC
         """
     )
 

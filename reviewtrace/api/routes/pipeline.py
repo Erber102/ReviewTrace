@@ -135,7 +135,7 @@ def _run_pipeline(job_id: str, req: RunRequest) -> None:  # noqa: C901
         effective_skip_expand = req.skip_expand
         if req.demo:
             if req.max_results == 50:
-                effective_max_results = 10
+                effective_max_results = 15
             if req.depth == 2:
                 effective_depth = 0
             if not req.skip_expand:

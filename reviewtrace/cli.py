@@ -24,7 +24,7 @@ def run(
     max_per_hop: int = typer.Option(30, "--max-per-hop", help="Max papers per expansion hop"),
     llm_delay: float = typer.Option(0.5, "--llm-delay", help="Seconds between LLM calls"),
     skip_expand: bool = typer.Option(False, "--skip-expand", help="Skip citation graph expansion"),
-    demo: bool = typer.Option(False, "--demo", help="Demo mode: max 3 queries, max_results=10, depth=0, no S2"),
+    demo: bool = typer.Option(False, "--demo", help="Demo mode: max 3 queries, max_results=15, depth=0, no S2"),
     max_queries: int = typer.Option(None, "--max-queries", help="Cap number of search queries"),
 ) -> None:
     """Run the full ReviewTrace pipeline end-to-end.
@@ -60,12 +60,12 @@ def run(
     # Apply demo defaults
     if demo:
         if max_results == 50:
-            max_results = 10
+            max_results = 15
         if depth == 2:
             depth = 0
         if not skip_expand:
             skip_expand = True
-        typer.echo("[demo] Demo mode enabled: max_results=10, depth=0, skip_expand=True, max 3 queries")
+        typer.echo("[demo] Demo mode enabled: max_results=15, depth=0, skip_expand=True, max 3 queries")
 
     # 1. Keyword retrieval
     typer.echo("[1/7] Keyword retrieval…")

@@ -23,7 +23,7 @@ function Badge({ type }) {
 }
 
 export default function RunPage() {
-  const DEMO_DEFAULTS = { max_results: 10, depth: 0, skip_expand: true, max_queries: 3 };
+  const DEMO_DEFAULTS = { max_results: 15, depth: 0, skip_expand: true, max_queries: 3 };
   const FULL_DEFAULTS = { max_results: 50, depth: 2, skip_expand: false, max_queries: null };
 
   const [form, setForm] = useState({
@@ -32,7 +32,7 @@ export default function RunPage() {
     criteria_topic: '',
     inclusion: '',
     exclusion: '',
-    max_results: 10,
+    max_results: 15,
     depth: 0,
     max_per_hop: 30,
     llm_delay: 0.5,
@@ -102,7 +102,7 @@ export default function RunPage() {
           <div className={`flex items-center justify-between px-3 py-2 rounded-lg border ${form.demo ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'}`}>
             <div>
               <span className="text-sm font-medium text-gray-700">Demo mode</span>
-              <p className="text-xs text-gray-500 mt-0.5">3 queries · max 10 results · no citation expansion</p>
+              <p className="text-xs text-gray-500 mt-0.5">3 queries · max 15 results · no citation expansion</p>
             </div>
             <button
               type="button"
