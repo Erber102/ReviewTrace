@@ -35,7 +35,6 @@ def _screen(paper_id: str, decision: str = "include") -> None:
 
 def _make_db(tmp_path, monkeypatch):
     """Create an isolated DB in tmp_path/run_a/ with one paper and return the path."""
-    from pathlib import Path
 
     run_dir = tmp_path / "run_a"
     run_dir.mkdir()
@@ -54,6 +53,7 @@ def _make_db(tmp_path, monkeypatch):
 def test_papers_default_db(tmp_path, monkeypatch):
     """Without db_path, /api/papers reads from the configured global DB."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     monkeypatch.setenv("REVIEWTRACE_DB_PATH", str(tmp_path / "test.db"))
@@ -69,6 +69,7 @@ def test_papers_default_db(tmp_path, monkeypatch):
 def test_papers_valid_db_path(tmp_path, monkeypatch):
     """?db_path=<valid path inside cwd> reads from that DB."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     monkeypatch.setenv("REVIEWTRACE_DB_PATH", str(tmp_path / "test.db"))
@@ -91,6 +92,7 @@ def test_papers_valid_db_path(tmp_path, monkeypatch):
 def test_papers_db_path_outside_cwd_returns_403(tmp_path, monkeypatch):
     """?db_path pointing outside cwd returns 403."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     inner = tmp_path / "inner"
@@ -109,6 +111,7 @@ def test_papers_db_path_outside_cwd_returns_403(tmp_path, monkeypatch):
 def test_papers_db_path_nonexistent_returns_404(tmp_path, monkeypatch):
     """?db_path pointing to a nonexistent file returns 404."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     monkeypatch.chdir(tmp_path)
@@ -126,6 +129,7 @@ def test_papers_db_path_nonexistent_returns_404(tmp_path, monkeypatch):
 def test_paper_audit_valid_db_path(tmp_path, monkeypatch):
     """Audit endpoint reads from the specified DB."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     monkeypatch.chdir(tmp_path)
@@ -146,6 +150,7 @@ def test_paper_audit_valid_db_path(tmp_path, monkeypatch):
 def test_paper_audit_db_path_outside_cwd_returns_403(tmp_path, monkeypatch):
     """Audit endpoint rejects db_path outside cwd."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     inner = tmp_path / "inner"
@@ -168,6 +173,7 @@ def test_paper_audit_db_path_outside_cwd_returns_403(tmp_path, monkeypatch):
 def test_evidence_db_path_outside_cwd_returns_403(tmp_path, monkeypatch):
     """Evidence endpoint rejects db_path outside cwd."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     inner = tmp_path / "inner"
@@ -186,6 +192,7 @@ def test_evidence_db_path_outside_cwd_returns_403(tmp_path, monkeypatch):
 def test_evidence_valid_db_path(tmp_path, monkeypatch):
     """Evidence endpoint reads from the specified DB."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     monkeypatch.chdir(tmp_path)
@@ -209,6 +216,7 @@ def test_evidence_valid_db_path(tmp_path, monkeypatch):
 def test_taxonomy_valid_db_path(tmp_path, monkeypatch):
     """Taxonomy endpoint reads from the specified DB."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     monkeypatch.chdir(tmp_path)
@@ -228,6 +236,7 @@ def test_taxonomy_valid_db_path(tmp_path, monkeypatch):
 def test_taxonomy_db_path_outside_cwd_returns_403(tmp_path, monkeypatch):
     """Taxonomy endpoint rejects db_path outside cwd."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     inner = tmp_path / "inner"
@@ -246,6 +255,7 @@ def test_taxonomy_db_path_outside_cwd_returns_403(tmp_path, monkeypatch):
 def test_taxonomy_db_path_nonexistent_returns_404(tmp_path, monkeypatch):
     """Taxonomy endpoint returns 404 for a nonexistent db_path."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     monkeypatch.chdir(tmp_path)
@@ -263,6 +273,7 @@ def test_taxonomy_db_path_nonexistent_returns_404(tmp_path, monkeypatch):
 def test_runs_valid_db_path(tmp_path, monkeypatch):
     """Runs endpoint reads from the specified DB."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     monkeypatch.chdir(tmp_path)
@@ -282,6 +293,7 @@ def test_runs_valid_db_path(tmp_path, monkeypatch):
 def test_runs_db_path_outside_cwd_returns_403(tmp_path, monkeypatch):
     """Runs endpoint rejects db_path outside cwd."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     inner = tmp_path / "inner"
@@ -300,6 +312,7 @@ def test_runs_db_path_outside_cwd_returns_403(tmp_path, monkeypatch):
 def test_runs_db_path_nonexistent_returns_404(tmp_path, monkeypatch):
     """Runs endpoint returns 404 for a nonexistent db_path."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     monkeypatch.chdir(tmp_path)
