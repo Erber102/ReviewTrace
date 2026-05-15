@@ -136,13 +136,11 @@ def _run_pipeline(job_id: str, req: RunRequest) -> None:  # noqa: C901
         output_dir.mkdir(parents=True, exist_ok=True)
         init_db(db_path)
 
-        _manifest_kwargs = dict(
-            topic=req.topic,
-            demo=req.demo,
-            fresh=req.fresh,
-            db_path=db_path,
-            run_id=job_id,
-        )
+        _manifest_topic = req.topic
+        _manifest_demo = req.demo
+        _manifest_fresh = req.fresh
+        _manifest_db_path = db_path
+        _manifest_run_id = job_id
 
         # 1. Keyword retrieval
         _emit(job_id, "retrieval", "Planning search queries…")
@@ -239,7 +237,15 @@ def _run_pipeline(job_id: str, req: RunRequest) -> None:  # noqa: C901
         export_matrix_csv(output_dir / "evidence_matrix.csv")
         export_items_json(output_dir / "evidence_items.json")
         export_taxonomy_md(output_dir / "taxonomy.md")
-        write_manifest(output_dir, status="completed", **_manifest_kwargs)
+        write_manifest(
+            output_dir,
+            status="completed",
+            topic=_manifest_topic,
+            demo=_manifest_demo,
+            fresh=_manifest_fresh,
+            db_path=_manifest_db_path,
+            run_id=_manifest_run_id,
+        )
         _emit(job_id, "export", f"✓ Outputs written to {output_dir}/")
 
         _send(job_id, {"type": "done", "message": "Pipeline complete!"})

@@ -14,9 +14,16 @@ from pathlib import Path
 from reviewtrace.db import connection as db
 
 
+def _count(sql: str) -> int:
+    """Return the integer n from a COUNT(*) query (always returns a row)."""
+    row = db.fetchone(sql)
+    assert row is not None
+    return int(row["n"])
+
+
 def collect_stats() -> dict:
     """Query the current DB state and return a stats dict."""
-    total = db.fetchone("SELECT COUNT(*) AS n FROM papers")["n"]
+    total = _count("SELECT COUNT(*) AS n FROM papers")
     dup_ids = {r["paper_id_removed"] for r in db.fetchall("SELECT paper_id_removed FROM dedup_decisions")}
     all_ids = {r["id"] for r in db.fetchall("SELECT id FROM papers")}
     canonical_ids = all_ids - dup_ids
@@ -34,9 +41,9 @@ def collect_stats() -> dict:
         "excluded": counts.get("exclude", 0),
         "uncertain": counts.get("uncertain", 0),
         "unscreened": len(canonical_ids - screened_ids),
-        "evidence_items": db.fetchone("SELECT COUNT(*) AS n FROM evidence_items")["n"],
-        "taxonomy_nodes": db.fetchone("SELECT COUNT(*) AS n FROM taxonomy_nodes")["n"],
-        "retrieval_runs": db.fetchone("SELECT COUNT(*) AS n FROM retrieval_runs")["n"],
+        "evidence_items": _count("SELECT COUNT(*) AS n FROM evidence_items"),
+        "taxonomy_nodes": _count("SELECT COUNT(*) AS n FROM taxonomy_nodes"),
+        "retrieval_runs": _count("SELECT COUNT(*) AS n FROM retrieval_runs"),
     }
 
 

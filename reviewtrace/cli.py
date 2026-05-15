@@ -405,9 +405,11 @@ def _execute_pipeline(  # noqa: C901
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    _manifest_kwargs = dict(
-        topic=topic, demo=demo, fresh=fresh, db_path=db_path, run_id=run_id
-    )
+    _manifest_topic = topic
+    _manifest_demo = demo
+    _manifest_fresh = fresh
+    _manifest_db_path = db_path
+    _manifest_run_id = run_id
 
     typer.echo(f"\n{'='*60}")
     typer.echo(f"  ReviewTrace  |  {topic}")
@@ -471,7 +473,15 @@ def _execute_pipeline(  # noqa: C901
         export_matrix_csv(out / "evidence_matrix.csv")
         export_items_json(out / "evidence_items.json")
         export_taxonomy_md(out / "taxonomy.md")
-        write_manifest(out, status="completed", **_manifest_kwargs)
+        write_manifest(
+            out,
+            status="completed",
+            topic=_manifest_topic,
+            demo=_manifest_demo,
+            fresh=_manifest_fresh,
+            db_path=_manifest_db_path,
+            run_id=_manifest_run_id,
+        )
 
         typer.echo(f"\nDone. Outputs written to {out}/")
         typer.echo("  papers.csv · retrieval_audit.json · retrieval_audit.md")
@@ -479,7 +489,16 @@ def _execute_pipeline(  # noqa: C901
         typer.echo("  evidence_items.json · taxonomy.md · run_manifest.json")
 
     except Exception as exc:
-        write_manifest(out, status="error", error=str(exc), **_manifest_kwargs)
+        write_manifest(
+            out,
+            status="error",
+            error=str(exc),
+            topic=_manifest_topic,
+            demo=_manifest_demo,
+            fresh=_manifest_fresh,
+            db_path=_manifest_db_path,
+            run_id=_manifest_run_id,
+        )
         raise
 
 
