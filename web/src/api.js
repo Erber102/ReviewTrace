@@ -39,13 +39,33 @@ export const api = {
     };
     return es;
   },
-  papers: (decision = 'all', includeDuplicates = false) =>
-    get(`/api/papers?decision=${decision}&include_duplicates=${includeDuplicates}`),
-  paper: (id) => get(`/api/papers/${id}`),
-  paperAudit: (id) => get(`/api/papers/${id}/audit`),
-  runs: () => get('/api/runs'),
-  taxonomy: () => get('/api/taxonomy'),
-  evidence: (paperId) =>
-    paperId ? get(`/api/evidence?paper_id=${paperId}`) : get('/api/evidence'),
-  exports: () => get('/api/export'),
+  papers: (decision = 'all', includeDuplicates = false, dbPath = null) => {
+    let url = `/api/papers?decision=${decision}&include_duplicates=${includeDuplicates}`;
+    if (dbPath) url += `&db_path=${encodeURIComponent(dbPath)}`;
+    return get(url);
+  },
+  paper: (id, dbPath = null) => {
+    const q = dbPath ? `?db_path=${encodeURIComponent(dbPath)}` : '';
+    return get(`/api/papers/${id}${q}`);
+  },
+  paperAudit: (id, dbPath = null) => {
+    const q = dbPath ? `?db_path=${encodeURIComponent(dbPath)}` : '';
+    return get(`/api/papers/${id}/audit${q}`);
+  },
+  runs: (dbPath = null) => {
+    const q = dbPath ? `?db_path=${encodeURIComponent(dbPath)}` : '';
+    return get(`/api/runs${q}`);
+  },
+  reviewRuns: () => get('/api/review-runs'),
+  taxonomy: (dbPath = null) => {
+    const q = dbPath ? `?db_path=${encodeURIComponent(dbPath)}` : '';
+    return get(`/api/taxonomy${q}`);
+  },
+  evidence: (paperId, dbPath = null) => {
+    let url = paperId ? `/api/evidence?paper_id=${paperId}` : '/api/evidence';
+    if (dbPath) url += `${paperId ? '&' : '?'}db_path=${encodeURIComponent(dbPath)}`;
+    return get(url);
+  },
+  exports: (outputDir) => get(outputDir ? `/api/export?output_dir=${encodeURIComponent(outputDir)}` : '/api/export'),
+  exportManifest: (outputDir) => get(outputDir ? `/api/export/manifest?output_dir=${encodeURIComponent(outputDir)}` : '/api/export/manifest'),
 };

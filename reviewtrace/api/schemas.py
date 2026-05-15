@@ -22,6 +22,7 @@ class RunRequest(BaseModel):
     skip_expand: bool = False
     demo: bool = False
     max_queries: int | None = Field(None, ge=1, le=20)
+    fresh: bool = False
 
 
 class JobStarted(BaseModel):
@@ -100,6 +101,24 @@ class TaxonomyNodeOut(BaseModel):
     cluster_id: int | None
     paper_ids: list[str]
     evidence_links: list[EvidenceLinkOut]
+
+
+# ---------------------------------------------------------------------------
+# Review runs (manifest-based)
+# ---------------------------------------------------------------------------
+
+
+class ReviewRunOut(BaseModel):
+    run_id: str
+    topic: str
+    created_at: str
+    status: str
+    demo: bool
+    fresh: bool
+    db_path: str
+    output_dir: str
+    stats: dict
+    error: str | None = None
 
 
 # ---------------------------------------------------------------------------

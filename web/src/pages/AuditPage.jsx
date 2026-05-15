@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
+const CURRENT_RUN_KEY = 'reviewtrace.currentRun';
+
 const SOURCE_COLORS = {
   openalex: 'bg-blue-100 text-blue-700',
   semantic_scholar: 'bg-purple-100 text-purple-700',
@@ -58,12 +60,27 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
 
+  const [currentRun, setCurrentRun] = useState(() => {
+    try {
+      const stored = localStorage.getItem(CURRENT_RUN_KEY);
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+  });
+
+  const dbPath = currentRun?.db_path ?? null;
+
+  function clearRun() {
+    localStorage.removeItem(CURRENT_RUN_KEY);
+    setCurrentRun(null);
+  }
+
   useEffect(() => {
-    api.runs()
+    setLoading(true);
+    api.runs(dbPath)
       .then(setRuns)
       .catch(() => setRuns([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [dbPath]);
 
   const sources = ['all', ...new Set(runs.map((r) => r.source).filter(Boolean))];
   const visible = filter === 'all' ? runs : runs.filter((r) => r.source === filter);
@@ -76,6 +93,26 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-4">
+      {/* Selected run banner */}
+      {currentRun && (
+        <div className="flex flex-col gap-1.5 px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-xl text-sm">
+          <div className="flex items-center gap-3">
+            <span className="text-indigo-700 font-medium shrink-0">Viewing run:</span>
+            <span className="text-indigo-800 font-medium truncate flex-1" title={currentRun.topic}>
+              {currentRun.topic || dbPath}
+            </span>
+            <button
+              type="button"
+              onClick={clearRun}
+              className="shrink-0 text-xs text-indigo-500 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 rounded px-2 py-0.5 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+          <code className="text-indigo-400 font-mono text-xs truncate" title={dbPath}>{dbPath}</code>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[

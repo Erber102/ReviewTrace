@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
+const CURRENT_RUN_KEY = 'reviewtrace.currentRun';
+
 const DECISION_COLORS = {
   include: 'bg-green-100 text-green-700',
   exclude: 'bg-red-100 text-red-700',
@@ -31,13 +33,13 @@ function SourceBadge({ sourceType }) {
   );
 }
 
-function PaperRow({ paper }) {
+function PaperRow({ paper, dbPath }) {
   const [expanded, setExpanded] = useState(false);
   const [audit, setAudit] = useState(null);
 
   async function toggleExpand() {
     if (!expanded && !audit) {
-      const entries = await api.paperAudit(paper.id).catch(() => []);
+      const entries = await api.paperAudit(paper.id, dbPath).catch(() => []);
       setAudit(entries);
     }
     setExpanded((v) => !v);
@@ -132,13 +134,27 @@ export default function PapersPage() {
   const [search, setSearch] = useState('');
   const [showDuplicates, setShowDuplicates] = useState(false);
 
+  const [currentRun, setCurrentRun] = useState(() => {
+    try {
+      const stored = localStorage.getItem(CURRENT_RUN_KEY);
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+  });
+
+  const dbPath = currentRun?.db_path ?? null;
+
+  function clearRun() {
+    localStorage.removeItem(CURRENT_RUN_KEY);
+    setCurrentRun(null);
+  }
+
   useEffect(() => {
     setLoading(true);
-    api.papers(filter, showDuplicates)
+    api.papers(filter, showDuplicates, dbPath)
       .then(setPapers)
       .catch(() => setPapers([]))
       .finally(() => setLoading(false));
-  }, [filter, showDuplicates]);
+  }, [filter, showDuplicates, dbPath]);
 
   const visible = papers.filter((p) => {
     if (!search) return true;
@@ -147,6 +163,27 @@ export default function PapersPage() {
   });
 
   return (
+    <div className="space-y-4">
+      {/* Selected run banner */}
+      {currentRun && (
+        <div className="flex flex-col gap-1.5 px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-xl text-sm">
+          <div className="flex items-center gap-3">
+            <span className="text-indigo-700 font-medium shrink-0">Viewing run:</span>
+            <span className="text-indigo-800 font-medium truncate flex-1" title={currentRun.topic}>
+              {currentRun.topic || dbPath}
+            </span>
+            <button
+              type="button"
+              onClick={clearRun}
+              className="shrink-0 text-xs text-indigo-500 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 rounded px-2 py-0.5 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+          <code className="text-indigo-400 font-mono text-xs truncate" title={dbPath}>{dbPath}</code>
+        </div>
+      )}
+
     <div className="bg-white rounded-xl border border-gray-200">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 p-4 border-b border-gray-100">
@@ -190,16 +227,17 @@ export default function PapersPage() {
                 <th className="text-left py-2 px-4">Year</th>
                 <th className="text-left py-2 px-4">Venue</th>
                 <th className="text-left py-2 px-4">Decision</th>
-                <th className="text-left py-2 px-4">Source</th>
+                <th className="text-left py-2 px-4">Source Type</th>
                 <th className="py-2 px-4"></th>
               </tr>
             </thead>
             <tbody>
-              {visible.map((p) => <PaperRow key={p.id} paper={p} />)}
+              {visible.map((p) => <PaperRow key={p.id} paper={p} dbPath={dbPath} />)}
             </tbody>
           </table>
         </div>
       )}
+    </div>
     </div>
   );
 }

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
+from reviewtrace.api import db_per_request
 from reviewtrace.api.schemas import AuditEntry, PaperOut
-from reviewtrace.audit.logger import get_paper_audit
-from reviewtrace.db import connection as db
 
 router = APIRouter()
 
@@ -35,14 +34,18 @@ def _build_paper_out(row: dict, duplicate_ids: set[str]) -> PaperOut:
 async def list_papers(
     decision: str = "all",
     include_duplicates: bool = False,
+    db_path: str | None = Query(default=None),
 ) -> list[PaperOut]:
     """List papers with optional decision filter."""
+    resolved_db = db_per_request.validate_db_path(db_path)
+
     duplicate_ids: set[str] = {
         r["paper_id_removed"]
-        for r in db.fetchall("SELECT paper_id_removed FROM dedup_decisions")
+        for r in db_per_request.fetchall(resolved_db, "SELECT paper_id_removed FROM dedup_decisions")
     }
 
-    rows = db.fetchall(
+    rows = db_per_request.fetchall(
+        resolved_db,
         """
         SELECT p.*,
                sd.decision,
@@ -51,7 +54,7 @@ async def list_papers(
         FROM papers p
         LEFT JOIN screening_decisions sd ON sd.paper_id = p.id
         ORDER BY p.year DESC, p.title
-        """
+        """,
     )
 
     out = []
@@ -71,12 +74,17 @@ async def list_papers(
 
 
 @router.get("/papers/{paper_id}", response_model=PaperOut)
-async def get_paper(paper_id: str) -> PaperOut:
+async def get_paper(
+    paper_id: str,
+    db_path: str | None = Query(default=None),
+) -> PaperOut:
+    resolved_db = db_per_request.validate_db_path(db_path)
     duplicate_ids: set[str] = {
         r["paper_id_removed"]
-        for r in db.fetchall("SELECT paper_id_removed FROM dedup_decisions")
+        for r in db_per_request.fetchall(resolved_db, "SELECT paper_id_removed FROM dedup_decisions")
     }
-    row = db.fetchone(
+    row = db_per_request.fetchone(
+        resolved_db,
         """
         SELECT p.*,
                sd.decision,
@@ -93,7 +101,27 @@ async def get_paper(paper_id: str) -> PaperOut:
     return _build_paper_out(row, duplicate_ids)
 
 
+_AUDIT_SQL = """
+    SELECT
+        pr.retrieval_reason,
+        pr.citation_path,
+        pr.created_at,
+        rr.query,
+        rr.source,
+        rr.expansion_type,
+        rr.timestamp AS run_timestamp
+    FROM paper_retrievals pr
+    JOIN retrieval_runs rr ON pr.retrieval_run_id = rr.id
+    WHERE pr.paper_id = ?
+    ORDER BY pr.created_at
+"""
+
+
 @router.get("/papers/{paper_id}/audit", response_model=list[AuditEntry])
-async def get_paper_audit_trail(paper_id: str) -> list[AuditEntry]:
-    entries = get_paper_audit(paper_id)
+async def get_paper_audit_trail(
+    paper_id: str,
+    db_path: str | None = Query(default=None),
+) -> list[AuditEntry]:
+    resolved_db = db_per_request.validate_db_path(db_path)
+    entries = db_per_request.fetchall(resolved_db, _AUDIT_SQL, (paper_id,))
     return [AuditEntry(**e) for e in entries]

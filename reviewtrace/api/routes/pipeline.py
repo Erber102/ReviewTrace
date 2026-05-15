@@ -101,7 +101,13 @@ def _emit(job_id: str, step: str, message: str) -> None:
 
 def _run_pipeline(job_id: str, req: RunRequest) -> None:  # noqa: C901
     import asyncio as _asyncio
+    import shutil
     import traceback
+
+    # Each web run gets its own subdirectory so runs are fully isolated.
+    root_output_dir = Path(os.getenv("REVIEWTRACE_OUTPUT_DIR", "outputs"))
+    output_dir = root_output_dir / job_id
+    db_path = output_dir / "reviewtrace.db"
 
     try:
         from reviewtrace.audit.dedup import run_dedup
@@ -112,6 +118,7 @@ def _run_pipeline(job_id: str, req: RunRequest) -> None:  # noqa: C901
         from reviewtrace.expansion.controller import expand as run_expand
         from reviewtrace.export.csv_export import export_papers_csv
         from reviewtrace.export.graphml_export import export_graphml
+        from reviewtrace.manifest import write_manifest
         from reviewtrace.retrieval.orchestrator import run_queries
         from reviewtrace.retrieval.planner import plan_queries
         from reviewtrace.retrieval.seed_loader import load_seeds
@@ -121,10 +128,21 @@ def _run_pipeline(job_id: str, req: RunRequest) -> None:  # noqa: C901
         from reviewtrace.taxonomy.controller import run_taxonomy
         from reviewtrace.taxonomy.exporter import export_taxonomy_md
 
-        db_path = os.getenv("REVIEWTRACE_DB_PATH", "reviewtrace.db")
-        output_dir = Path(os.getenv("REVIEWTRACE_OUTPUT_DIR", "outputs"))
+        # fresh=True: clear the per-run dir if it somehow already exists
+        if req.fresh and output_dir.exists():
+            shutil.rmtree(output_dir)
+            _emit(job_id, "retrieval", f"[fresh] Cleared run directory: {output_dir}/")
+
         output_dir.mkdir(parents=True, exist_ok=True)
         init_db(db_path)
+
+        _manifest_kwargs = dict(
+            topic=req.topic,
+            demo=req.demo,
+            fresh=req.fresh,
+            db_path=db_path,
+            run_id=job_id,
+        )
 
         # 1. Keyword retrieval
         _emit(job_id, "retrieval", "Planning search queries…")
@@ -221,11 +239,26 @@ def _run_pipeline(job_id: str, req: RunRequest) -> None:  # noqa: C901
         export_matrix_csv(output_dir / "evidence_matrix.csv")
         export_items_json(output_dir / "evidence_items.json")
         export_taxonomy_md(output_dir / "taxonomy.md")
+        write_manifest(output_dir, status="completed", **_manifest_kwargs)
         _emit(job_id, "export", f"✓ Outputs written to {output_dir}/")
 
         _send(job_id, {"type": "done", "message": "Pipeline complete!"})
 
     except Exception as e:
+        try:
+            from reviewtrace.manifest import write_manifest
+            write_manifest(
+                output_dir,
+                status="error",
+                error=str(e),
+                topic=req.topic,
+                demo=req.demo,
+                fresh=req.fresh,
+                db_path=db_path,
+                run_id=job_id,
+            )
+        except Exception:
+            pass  # never let manifest failure obscure the real error
         _send(
             job_id,
             {"type": "error", "message": str(e), "traceback": traceback.format_exc()},

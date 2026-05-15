@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+import os
+from pathlib import Path
+
+from fastapi import APIRouter, Query
 
 from reviewtrace.api.schemas import (
     EvidenceLinkOut,
+    ReviewRunOut,
     RunOut,
     StatsOut,
     TaxonomyNodeOut,
 )
+from reviewtrace.api import db_per_request
 from reviewtrace.audit.logger import get_all_runs
 from reviewtrace.db import connection as db
+from reviewtrace.manifest import scan_manifests
 
 router = APIRouter()
 
@@ -57,25 +63,43 @@ async def get_stats() -> StatsOut:
 
 
 @router.get("/runs", response_model=list[RunOut])
-async def list_runs() -> list[RunOut]:
-    return [RunOut(**r) for r in get_all_runs()]
+async def list_runs(
+    db_path: str | None = Query(default=None),
+) -> list[RunOut]:
+    resolved_db = db_per_request.validate_db_path(db_path)
+    rows = db_per_request.fetchall(
+        resolved_db,
+        "SELECT * FROM retrieval_runs ORDER BY timestamp",
+    )
+    return [RunOut(**r) for r in rows]
+
+
+@router.get("/review-runs", response_model=list[ReviewRunOut])
+async def list_review_runs() -> list[ReviewRunOut]:
+    """List completed and errored pipeline runs discovered from run_manifest.json files."""
+    output_root = Path(os.getenv("REVIEWTRACE_OUTPUT_DIR", "outputs"))
+    manifests = scan_manifests(output_root)
+    return [ReviewRunOut(**m) for m in manifests]
 
 
 @router.get("/taxonomy", response_model=list[TaxonomyNodeOut])
-async def list_taxonomy() -> list[TaxonomyNodeOut]:
-    nodes = db.fetchall("SELECT * FROM taxonomy_nodes ORDER BY label")
+async def list_taxonomy(
+    db_path: str | None = Query(default=None),
+) -> list[TaxonomyNodeOut]:
+    resolved_db = db_per_request.validate_db_path(db_path)
+    nodes = db_per_request.fetchall(resolved_db, "SELECT * FROM taxonomy_nodes ORDER BY label")
     out = []
     for node in nodes:
-        # papers linked via taxonomy_evidence
         paper_ids = [
             r["paper_id"]
-            for r in db.fetchall(
+            for r in db_per_request.fetchall(
+                resolved_db,
                 "SELECT DISTINCT paper_id FROM taxonomy_evidence WHERE taxonomy_node_id = ?",
                 (node["id"],),
             )
         ]
-        # evidence items
-        ev_rows = db.fetchall(
+        ev_rows = db_per_request.fetchall(
+            resolved_db,
             """
             SELECT te.evidence_item_id AS evidence_id,
                    te.paper_id,
@@ -104,10 +128,18 @@ async def list_taxonomy() -> list[TaxonomyNodeOut]:
 
 
 @router.get("/evidence")
-async def list_evidence(paper_id: str | None = None) -> list[dict]:
+async def list_evidence(
+    paper_id: str | None = None,
+    db_path: str | None = Query(default=None),
+) -> list[dict]:
+    resolved_db = db_per_request.validate_db_path(db_path)
     if paper_id:
-        return db.fetchall(
+        return db_per_request.fetchall(
+            resolved_db,
             "SELECT * FROM evidence_items WHERE paper_id = ? ORDER BY evidence_type",
             (paper_id,),
         )
-    return db.fetchall("SELECT * FROM evidence_items ORDER BY paper_id, evidence_type")
+    return db_per_request.fetchall(
+        resolved_db,
+        "SELECT * FROM evidence_items ORDER BY paper_id, evidence_type",
+    )

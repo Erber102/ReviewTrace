@@ -154,3 +154,137 @@ def test_extract_source_two_hops():
 
 def test_extract_source_invalid():
     assert _extract_source("only_one_part", "backward_citation") is None
+
+
+# ---------------------------------------------------------------------------
+# GET /api/export endpoint – output_dir validation
+# ---------------------------------------------------------------------------
+
+def test_export_list_default(tmp_path, monkeypatch):
+    """GET /api/export with no output_dir uses the configured default."""
+    from fastapi.testclient import TestClient
+    from reviewtrace.api.app import app
+
+    monkeypatch.setenv("REVIEWTRACE_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("REVIEWTRACE_DB_PATH", str(tmp_path / "test.db"))
+
+    with TestClient(app) as client:
+        response = client.get("/api/export")
+    assert response.status_code == 200
+    kinds = {item["kind"] for item in response.json()}
+    assert "papers" in kinds
+
+
+def test_export_list_valid_subdir(tmp_path, monkeypatch):
+    """GET /api/export?output_dir=<subdir> works for a path inside the root."""
+    from fastapi.testclient import TestClient
+    from reviewtrace.api.app import app
+
+    monkeypatch.setenv("REVIEWTRACE_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("REVIEWTRACE_DB_PATH", str(tmp_path / "test.db"))
+
+    subdir = tmp_path / "my_run"
+    subdir.mkdir()
+    (subdir / "papers.csv").write_text("id,title\n")
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/export?output_dir={subdir}")
+    assert response.status_code == 200
+    papers = next(item for item in response.json() if item["kind"] == "papers")
+    assert papers["available"] is True
+
+
+def test_export_list_rejects_path_outside_root(tmp_path, monkeypatch):
+    """GET /api/export?output_dir=<outside root> returns 403."""
+    from fastapi.testclient import TestClient
+    from reviewtrace.api.app import app
+
+    root = tmp_path / "outputs"
+    root.mkdir()
+    monkeypatch.setenv("REVIEWTRACE_OUTPUT_DIR", str(root))
+    monkeypatch.setenv("REVIEWTRACE_DB_PATH", str(tmp_path / "test.db"))
+
+    outside = tmp_path / "secret"
+    outside.mkdir()
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/export?output_dir={outside}")
+    assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# GET /api/export/manifest endpoint
+# ---------------------------------------------------------------------------
+
+def test_export_manifest_returns_manifest(tmp_path, monkeypatch):
+    """GET /api/export/manifest returns the run_manifest.json content."""
+    import json
+    from fastapi.testclient import TestClient
+    from reviewtrace.api.app import app
+
+    root = tmp_path / "outputs"
+    root.mkdir()
+    monkeypatch.setenv("REVIEWTRACE_OUTPUT_DIR", str(root))
+    monkeypatch.setenv("REVIEWTRACE_DB_PATH", str(tmp_path / "test.db"))
+
+    data = {"run_id": "abc", "topic": "T", "status": "completed", "stats": {"included": 5}}
+    (root / "run_manifest.json").write_text(json.dumps(data))
+
+    with TestClient(app) as client:
+        response = client.get("/api/export/manifest")
+    assert response.status_code == 200
+    assert response.json()["run_id"] == "abc"
+
+
+def test_export_manifest_subdir(tmp_path, monkeypatch):
+    """GET /api/export/manifest?output_dir=<subdir> reads from the subdir."""
+    import json
+    from fastapi.testclient import TestClient
+    from reviewtrace.api.app import app
+
+    root = tmp_path / "outputs"
+    root.mkdir()
+    subdir = root / "run_a"
+    subdir.mkdir()
+    monkeypatch.setenv("REVIEWTRACE_OUTPUT_DIR", str(root))
+    monkeypatch.setenv("REVIEWTRACE_DB_PATH", str(tmp_path / "test.db"))
+
+    data = {"run_id": "run_a", "topic": "SAE", "status": "completed", "stats": {}}
+    (subdir / "run_manifest.json").write_text(json.dumps(data))
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/export/manifest?output_dir={subdir}")
+    assert response.status_code == 200
+    assert response.json()["run_id"] == "run_a"
+
+
+def test_export_manifest_missing_returns_404(tmp_path, monkeypatch):
+    """GET /api/export/manifest returns 404 when run_manifest.json does not exist."""
+    from fastapi.testclient import TestClient
+    from reviewtrace.api.app import app
+
+    root = tmp_path / "outputs"
+    root.mkdir()
+    monkeypatch.setenv("REVIEWTRACE_OUTPUT_DIR", str(root))
+    monkeypatch.setenv("REVIEWTRACE_DB_PATH", str(tmp_path / "test.db"))
+
+    with TestClient(app) as client:
+        response = client.get("/api/export/manifest")
+    assert response.status_code == 404
+
+
+def test_export_manifest_rejects_path_outside_root(tmp_path, monkeypatch):
+    """GET /api/export/manifest?output_dir=<outside root> returns 403."""
+    from fastapi.testclient import TestClient
+    from reviewtrace.api.app import app
+
+    root = tmp_path / "outputs"
+    root.mkdir()
+    outside = tmp_path / "secret"
+    outside.mkdir()
+    monkeypatch.setenv("REVIEWTRACE_OUTPUT_DIR", str(root))
+    monkeypatch.setenv("REVIEWTRACE_DB_PATH", str(tmp_path / "test.db"))
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/export/manifest?output_dir={outside}")
+    assert response.status_code == 403

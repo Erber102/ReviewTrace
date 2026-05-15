@@ -191,6 +191,61 @@ def test_generate_labels_multiple_clusters(monkeypatch):
     assert cluster_ids == {0, 1}
 
 
+def _fake_llm_label_with_relabel(monkeypatch):
+    """Returns the same generic label on the first call, a specific label on the relabel call."""
+    def _stub(prompt, max_tokens=256):
+        if "already been assigned" in prompt:
+            return json.dumps({
+                "label": "Specific SAE Feature Decomposition",
+                "description": "More specific cluster about feature decomposition.",
+            })
+        return json.dumps({
+            "label": "Sparse Autoencoders",
+            "description": "Research on SAEs for mechanistic interpretability.",
+        })
+    monkeypatch.setattr("reviewtrace.taxonomy.labeler.complete", _stub)
+
+
+def test_generate_labels_deduplicates_duplicate_labels(monkeypatch):
+    """When LLM returns the same label for two clusters, the later node is relabeled."""
+    _fake_llm_label_with_relabel(monkeypatch)
+    for i in range(4):
+        _insert_paper(f"10.1/dup{i}", f"Paper {i}", abstract=f"Abstract {i}.")
+    papers = fetchall("SELECT * FROM papers")
+    assignments = [0, 0, 1, 1]  # two clusters, LLM returns same label for both
+
+    nodes = generate_labels(assignments, papers)
+    assert len(nodes) == 2
+
+    labels = [n.label for n in nodes]
+    assert labels[0] != labels[1], "Duplicate labels must be resolved"
+
+    # DB rows should also have distinct labels
+    rows = fetchall("SELECT label FROM taxonomy_nodes ORDER BY cluster_id")
+    assert rows[0]["label"] != rows[1]["label"]
+
+
+def test_generate_labels_no_dedup_when_labels_differ(monkeypatch):
+    """When LLM returns distinct labels, no relabeling should occur."""
+    call_count = {"n": 0}
+    def _stub(prompt, max_tokens=256):
+        call_count["n"] += 1
+        label = "Cluster Alpha" if call_count["n"] == 1 else "Cluster Beta"
+        return json.dumps({"label": label, "description": "Description."})
+    monkeypatch.setattr("reviewtrace.taxonomy.labeler.complete", _stub)
+
+    for i in range(4):
+        _insert_paper(f"10.1/nd{i}", f"Paper {i}", abstract=f"Abstract {i}.")
+    papers = fetchall("SELECT * FROM papers")
+    assignments = [0, 0, 1, 1]
+
+    nodes = generate_labels(assignments, papers)
+    assert nodes[0].label == "Cluster Alpha"
+    assert nodes[1].label == "Cluster Beta"
+    # LLM called exactly twice (one per cluster, no relabeling)
+    assert call_count["n"] == 2
+
+
 # ---------------------------------------------------------------------------
 # Linker
 # ---------------------------------------------------------------------------

@@ -26,7 +26,7 @@ def run(
     topic: str = typer.Option(..., "--topic", "-t", help="Research topic"),
     seeds: Path = typer.Option(None, "--seeds", "-s", help="Seeds file (one arXiv/DOI per line)"),
     criteria: Path = typer.Option(None, "--criteria", "-c", help="Screening criteria JSON file"),
-    db_path: Path = typer.Option(Path("reviewtrace.db"), "--db", help="SQLite database path"),
+    db_path: Path | None = typer.Option(None, "--db", help="SQLite database path (default: <output-dir>/reviewtrace.db)"),
     output_dir: Path = typer.Option(Path("outputs"), "--output-dir", "-o", help="Output directory"),
     max_results: int = typer.Option(50, "--max-results", "-n", help="Max results per query"),
     depth: int = typer.Option(2, "--depth", help="Citation expansion depth"),
@@ -35,6 +35,7 @@ def run(
     skip_expand: bool = typer.Option(False, "--skip-expand", help="Skip citation graph expansion"),
     demo: bool = typer.Option(False, "--demo", help="Demo mode: max 3 queries, max_results=15, depth=0, no S2"),
     max_queries: int = typer.Option(None, "--max-queries", help="Cap number of search queries"),
+    fresh: bool = typer.Option(False, "--fresh/--no-fresh", help="Delete DB and clear output dir before running"),
 ) -> None:
     """Run the full ReviewTrace pipeline end-to-end.
 
@@ -62,6 +63,7 @@ def run(
         skip_expand=skip_expand,
         demo=demo,
         max_queries=max_queries,
+        fresh=fresh,
     )
 
 
@@ -77,12 +79,13 @@ def demo(
     topic: str = typer.Option(_DEMO_TOPIC, "--topic", "-t", help="Research topic"),
     seeds: Path = typer.Option(_DEMO_SEEDS, "--seeds", "-s", help="Seeds file"),
     criteria: Path = typer.Option(_DEMO_CRITERIA, "--criteria", "-c", help="Screening criteria JSON file"),
-    db_path: Path = typer.Option(Path("reviewtrace.db"), "--db", help="SQLite database path"),
+    db_path: Path | None = typer.Option(None, "--db", help="SQLite database path (default: <output-dir>/reviewtrace.db)"),
+    fresh: bool = typer.Option(True, "--fresh/--no-fresh", help="Delete DB and clear output dir before running (default: True)"),
 ) -> None:
     """Run the sparse autoencoders demo pipeline (fast, no citation expansion).
 
     Equivalent to:
-      reviewtrace run --topic "..." --seeds examples/... --criteria examples/... --demo
+      reviewtrace run --topic "..." --seeds examples/... --criteria examples/... --demo --fresh
     """
     # Validate that example files exist
     missing = [p for p in (seeds, criteria) if not p.exists()]
@@ -99,7 +102,8 @@ def demo(
     typer.echo(f"  topic:    {topic}")
     typer.echo(f"  seeds:    {seeds}")
     typer.echo(f"  criteria: {criteria}")
-    typer.echo(f"  output:   {output_dir}/\n")
+    typer.echo(f"  output:   {output_dir}/")
+    typer.echo(f"  fresh:    {fresh}\n")
 
     _execute_pipeline(
         topic=topic,
@@ -114,6 +118,7 @@ def demo(
         skip_expand=True,
         demo=True,
         max_queries=max_queries,
+        fresh=fresh,
     )
 
 
@@ -348,7 +353,7 @@ def _execute_pipeline(  # noqa: C901
     topic: str,
     seeds: Path | None,
     criteria: Path | None,
-    db_path: Path,
+    db_path: Path | None,
     output_dir: Path,
     max_results: int,
     depth: int,
@@ -357,9 +362,12 @@ def _execute_pipeline(  # noqa: C901
     skip_expand: bool,
     demo: bool,
     max_queries: int | None,
+    fresh: bool = False,
 ) -> None:
     """Shared pipeline body used by both `run` and `demo`."""
     import asyncio
+    import shutil
+    import uuid
 
     from reviewtrace.audit.dedup import run_dedup
     from reviewtrace.audit.export import export_json, export_markdown
@@ -369,6 +377,7 @@ def _execute_pipeline(  # noqa: C901
     from reviewtrace.expansion.controller import expand as run_expand
     from reviewtrace.export.csv_export import export_papers_csv
     from reviewtrace.export.graphml_export import export_graphml
+    from reviewtrace.manifest import write_manifest
     from reviewtrace.retrieval.orchestrator import run_queries
     from reviewtrace.retrieval.planner import plan_queries
     from reviewtrace.retrieval.seed_loader import load_seeds
@@ -377,76 +386,101 @@ def _execute_pipeline(  # noqa: C901
     from reviewtrace.taxonomy.controller import run_taxonomy
     from reviewtrace.taxonomy.exporter import export_taxonomy_md
 
+    run_id = uuid.uuid4().hex[:12]
+
+    # Resolve db_path: default to <output_dir>/reviewtrace.db so each run is self-contained
+    if db_path is None:
+        db_path = Path(output_dir) / "reviewtrace.db"
+
+    if fresh:
+        if db_path.exists():
+            db_path.unlink()
+            typer.echo(f"[fresh] Removed existing database: {db_path}")
+        out_to_clear = Path(output_dir)
+        if out_to_clear.exists():
+            shutil.rmtree(out_to_clear)
+            typer.echo(f"[fresh] Cleared output directory: {out_to_clear}/")
+
     init_db(db_path)
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
+
+    _manifest_kwargs = dict(
+        topic=topic, demo=demo, fresh=fresh, db_path=db_path, run_id=run_id
+    )
 
     typer.echo(f"\n{'='*60}")
     typer.echo(f"  ReviewTrace  |  {topic}")
     typer.echo(f"{'='*60}\n")
 
-    # 1. Keyword retrieval
-    typer.echo("[1/7] Keyword retrieval…")
-    queries = plan_queries(topic, max_results_per_query=max_results, demo=demo, max_queries=max_queries)
-    papers = asyncio.run(run_queries(queries))
-    typer.echo(f"      {len(papers)} papers retrieved")
+    try:
+        # 1. Keyword retrieval
+        typer.echo("[1/7] Keyword retrieval…")
+        queries = plan_queries(topic, max_results_per_query=max_results, demo=demo, max_queries=max_queries)
+        papers = asyncio.run(run_queries(queries))
+        typer.echo(f"      {len(papers)} papers retrieved")
 
-    # 2. Seed papers
-    seed_ids: list[str] = []
-    if seeds:
-        typer.echo("[2/7] Loading seed papers…")
-        seed_ids = load_seeds(seeds, progress_cb=lambda msg: typer.echo(f"      {msg}"))
-    else:
-        typer.echo("[2/7] No seeds file — skipping seed load")
+        # 2. Seed papers
+        seed_ids: list[str] = []
+        if seeds:
+            typer.echo("[2/7] Loading seed papers…")
+            seed_ids = load_seeds(seeds, progress_cb=lambda msg: typer.echo(f"      {msg}"))
+        else:
+            typer.echo("[2/7] No seeds file — skipping seed load")
 
-    # 3. Dedup
-    typer.echo("[3/7] Deduplication…")
-    r = run_dedup()
-    typer.echo(f"      {r.total_before} → {r.total_after} papers ({r.fuzzy_merges} fuzzy merges)")
+        # 3. Dedup
+        typer.echo("[3/7] Deduplication…")
+        r = run_dedup()
+        typer.echo(f"      {r.total_before} → {r.total_after} papers ({r.fuzzy_merges} fuzzy merges)")
 
-    # 4. Citation graph expansion
-    if not skip_expand:
-        typer.echo("[4/7] Citation graph expansion (BFS)…")
-        expand_seeds = seed_ids or [row["id"] for row in fetchall("SELECT id FROM papers")]
-        exp = asyncio.run(run_expand(expand_seeds, max_depth=depth, max_papers_per_hop=max_per_hop))
-        typer.echo(f"      +{exp.new_papers_count} papers in {exp.total_hops} hops")
-        r2 = run_dedup()
-        typer.echo(f"      Dedup after expansion: {r2.total_after} canonical papers")
-    else:
-        typer.echo("[4/7] Citation graph expansion skipped (--skip-expand)")
+        # 4. Citation graph expansion
+        if not skip_expand:
+            typer.echo("[4/7] Citation graph expansion (BFS)…")
+            expand_seeds = seed_ids or [row["id"] for row in fetchall("SELECT id FROM papers")]
+            exp = asyncio.run(run_expand(expand_seeds, max_depth=depth, max_papers_per_hop=max_per_hop))
+            typer.echo(f"      +{exp.new_papers_count} papers in {exp.total_hops} hops")
+            r2 = run_dedup()
+            typer.echo(f"      Dedup after expansion: {r2.total_after} canonical papers")
+        else:
+            typer.echo("[4/7] Citation graph expansion skipped (--skip-expand)")
 
-    # 5. Screening
-    typer.echo("[5/7] Screening…")
-    sc = _load_criteria(criteria, topic)
-    policy = load_policy()
-    decisions = run_screening(sc, policy=policy, delay_seconds=llm_delay)
-    inc = sum(1 for d in decisions if d.decision == "include")
-    typer.echo(f"      include={inc}  exclude={len(decisions)-inc}")
+        # 5. Screening
+        typer.echo("[5/7] Screening…")
+        sc = _load_criteria(criteria, topic)
+        policy = load_policy()
+        decisions = run_screening(sc, policy=policy, delay_seconds=llm_delay)
+        inc = sum(1 for d in decisions if d.decision == "include")
+        typer.echo(f"      include={inc}  exclude={len(decisions)-inc}")
 
-    # 6. Evidence extraction
-    typer.echo("[6/7] Evidence extraction…")
-    items = run_extraction(delay_seconds=llm_delay)
-    typer.echo(f"      {len(items)} evidence items extracted")
+        # 6. Evidence extraction
+        typer.echo("[6/7] Evidence extraction…")
+        items = run_extraction(delay_seconds=llm_delay)
+        typer.echo(f"      {len(items)} evidence items extracted")
 
-    # 7. Taxonomy
-    typer.echo("[7/7] Building taxonomy…")
-    tax = run_taxonomy()
-    typer.echo(f"      {tax.n_nodes} nodes · {tax.n_evidence_links} evidence links")
+        # 7. Taxonomy
+        typer.echo("[7/7] Building taxonomy…")
+        tax = run_taxonomy()
+        typer.echo(f"      {tax.n_nodes} nodes · {tax.n_evidence_links} evidence links")
 
-    # Export everything
-    typer.echo("\nExporting outputs…")
-    export_papers_csv(out / "papers.csv")
-    export_json(out / "retrieval_audit.json")
-    export_markdown(out / "retrieval_audit.md")
-    export_graphml(out / "citation_graph.graphml")
-    export_matrix_csv(out / "evidence_matrix.csv")
-    export_items_json(out / "evidence_items.json")
-    export_taxonomy_md(out / "taxonomy.md")
+        # Export everything
+        typer.echo("\nExporting outputs…")
+        export_papers_csv(out / "papers.csv")
+        export_json(out / "retrieval_audit.json")
+        export_markdown(out / "retrieval_audit.md")
+        export_graphml(out / "citation_graph.graphml")
+        export_matrix_csv(out / "evidence_matrix.csv")
+        export_items_json(out / "evidence_items.json")
+        export_taxonomy_md(out / "taxonomy.md")
+        write_manifest(out, status="completed", **_manifest_kwargs)
 
-    typer.echo(f"\nDone. Outputs written to {out}/")
-    typer.echo("  papers.csv · retrieval_audit.json · retrieval_audit.md")
-    typer.echo("  citation_graph.graphml · evidence_matrix.csv")
-    typer.echo("  evidence_items.json · taxonomy.md")
+        typer.echo(f"\nDone. Outputs written to {out}/")
+        typer.echo("  papers.csv · retrieval_audit.json · retrieval_audit.md")
+        typer.echo("  citation_graph.graphml · evidence_matrix.csv")
+        typer.echo("  evidence_items.json · taxonomy.md · run_manifest.json")
+
+    except Exception as exc:
+        write_manifest(out, status="error", error=str(exc), **_manifest_kwargs)
+        raise
 
 
 # ---------------------------------------------------------------------------

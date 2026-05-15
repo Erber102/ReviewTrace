@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
+const CURRENT_RUN_KEY = 'reviewtrace.currentRun';
+
 const EVIDENCE_TYPE_COLORS = {
   method_proposal: 'bg-blue-50 text-blue-700',
   empirical_finding: 'bg-green-50 text-green-700',
@@ -73,32 +75,66 @@ export default function TaxonomyPage() {
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const [currentRun, setCurrentRun] = useState(() => {
+    try {
+      const stored = localStorage.getItem(CURRENT_RUN_KEY);
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+  });
+
+  const dbPath = currentRun?.db_path ?? null;
+
+  function clearRun() {
+    localStorage.removeItem(CURRENT_RUN_KEY);
+    setCurrentRun(null);
+  }
+
   useEffect(() => {
-    api.taxonomy()
+    setLoading(true);
+    api.taxonomy(dbPath)
       .then(setNodes)
       .catch(() => setNodes([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [dbPath]);
 
   if (loading) return <div className="p-8 text-center text-gray-400">Loading taxonomy…</div>;
 
-  if (nodes.length === 0) {
-    return (
-      <div className="p-8 text-center text-gray-400">
-        No taxonomy nodes yet — run the pipeline first.
-      </div>
-    );
-  }
-
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-800">{nodes.length} Taxonomy Nodes</h2>
-        <span className="text-sm text-gray-400">Click a node to expand evidence</span>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {nodes.map((node) => <NodeCard key={node.id} node={node} />)}
-      </div>
+    <div className="space-y-4">
+      {currentRun && (
+        <div className="flex flex-col gap-1.5 px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-xl text-sm">
+          <div className="flex items-center gap-3">
+            <span className="text-indigo-700 font-medium shrink-0">Viewing run:</span>
+            <span className="text-indigo-800 font-medium truncate flex-1" title={currentRun.topic}>
+              {currentRun.topic || dbPath}
+            </span>
+            <button
+              type="button"
+              onClick={clearRun}
+              className="shrink-0 text-xs text-indigo-500 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 rounded px-2 py-0.5 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+          <code className="text-indigo-400 font-mono text-xs truncate" title={dbPath}>{dbPath}</code>
+        </div>
+      )}
+
+      {nodes.length === 0 ? (
+        <div className="p-8 text-center text-gray-400">
+          No taxonomy nodes yet — run the pipeline first.
+        </div>
+      ) : (
+        <div>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-800">{nodes.length} Taxonomy Nodes</h2>
+            <span className="text-sm text-gray-400">Click a node to expand evidence</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {nodes.map((node) => <NodeCard key={node.id} node={node} />)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
