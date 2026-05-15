@@ -163,6 +163,7 @@ def test_extract_source_invalid():
 def test_export_list_default(tmp_path, monkeypatch):
     """GET /api/export with no output_dir uses the configured default."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     monkeypatch.setenv("REVIEWTRACE_OUTPUT_DIR", str(tmp_path))
@@ -178,6 +179,7 @@ def test_export_list_default(tmp_path, monkeypatch):
 def test_export_list_valid_subdir(tmp_path, monkeypatch):
     """GET /api/export?output_dir=<subdir> works for a path inside the root."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     monkeypatch.setenv("REVIEWTRACE_OUTPUT_DIR", str(tmp_path))
@@ -197,6 +199,7 @@ def test_export_list_valid_subdir(tmp_path, monkeypatch):
 def test_export_list_rejects_path_outside_root(tmp_path, monkeypatch):
     """GET /api/export?output_dir=<outside root> returns 403."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     root = tmp_path / "outputs"
@@ -219,7 +222,9 @@ def test_export_list_rejects_path_outside_root(tmp_path, monkeypatch):
 def test_export_manifest_returns_manifest(tmp_path, monkeypatch):
     """GET /api/export/manifest returns the run_manifest.json content."""
     import json
+
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     root = tmp_path / "outputs"
@@ -239,7 +244,9 @@ def test_export_manifest_returns_manifest(tmp_path, monkeypatch):
 def test_export_manifest_subdir(tmp_path, monkeypatch):
     """GET /api/export/manifest?output_dir=<subdir> reads from the subdir."""
     import json
+
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     root = tmp_path / "outputs"
@@ -261,6 +268,7 @@ def test_export_manifest_subdir(tmp_path, monkeypatch):
 def test_export_manifest_missing_returns_404(tmp_path, monkeypatch):
     """GET /api/export/manifest returns 404 when run_manifest.json does not exist."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     root = tmp_path / "outputs"
@@ -276,6 +284,7 @@ def test_export_manifest_missing_returns_404(tmp_path, monkeypatch):
 def test_export_manifest_rejects_path_outside_root(tmp_path, monkeypatch):
     """GET /api/export/manifest?output_dir=<outside root> returns 403."""
     from fastapi.testclient import TestClient
+
     from reviewtrace.api.app import app
 
     root = tmp_path / "outputs"

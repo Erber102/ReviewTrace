@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Query
 
+from reviewtrace.api import db_per_request
 from reviewtrace.api.schemas import (
     EvidenceLinkOut,
     ReviewRunOut,
@@ -14,8 +15,6 @@ from reviewtrace.api.schemas import (
     StatsOut,
     TaxonomyNodeOut,
 )
-from reviewtrace.api import db_per_request
-from reviewtrace.audit.logger import get_all_runs
 from reviewtrace.db import connection as db
 from reviewtrace.manifest import scan_manifests
 

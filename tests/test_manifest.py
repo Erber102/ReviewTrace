@@ -192,7 +192,6 @@ def test_scan_manifests_includes_error_status(tmp_path):
 
 def test_review_runs_endpoint(tmp_path, monkeypatch):
     """GET /api/review-runs returns manifests sorted by created_at descending."""
-    import os
 
     from fastapi.testclient import TestClient
 
